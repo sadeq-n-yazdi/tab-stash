@@ -93,8 +93,10 @@ const PepperChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-"
 // PepperLen is the length of a generated pepper.
 const PepperLen = 64
 
-// minPepperLen is the shortest pepper that SetPepper accepts.
-const minPepperLen = 32
+// The keyid in each hash is derived from the pepper. With a weak pepper,
+// a person with only the database could test guesses of the pepper against
+// the keyid. Thus SetPepper accepts only a strong pepper: PepperLen or more
+// characters from PepperChars (about 368 bits for 64 characters).
 
 // ErrWrongPepper is returned when a hash was made with a different pepper.
 var ErrWrongPepper = errors.New("the password hash was made with a different pepper (TAB_STASH_PASSWORD_PEPPER)")
@@ -111,8 +113,8 @@ func SetPepper(p string) error {
 		pepper, pepperID = nil, ""
 		return nil
 	}
-	if len(p) < minPepperLen {
-		return fmt.Errorf("the pepper must have %d or more characters", minPepperLen)
+	if len(p) < PepperLen || strings.Trim(p, PepperChars) != "" {
+		return fmt.Errorf("TAB_STASH_PASSWORD_SALT must have %d or more characters from [a-zA-Z.-]; make one with \"tab-stash-server gen-salt\"", PepperLen)
 	}
 	pepper = []byte(p)
 	sum := sha256.Sum256(pepper)

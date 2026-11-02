@@ -1,6 +1,8 @@
 # Tab Stash sync server: API design
 
-Status: design only. This server does not exist yet.
+Status: the API in section 5 is in `server/` (Go). The web page (section 8)
+and the sync in the extension (section 6) are not done yet. To install the
+server, refer to [server/README.md](../server/README.md).
 
 ## 1. Purpose
 
@@ -30,9 +32,11 @@ after you log in.
 ```
 
 - The reverse proxy (for example nginx or Caddy) holds the TLS certificate.
-- The sync server is a small HTTP application. It has the API in section 5 and
-  the web page.
-- The database can be SQLite. One user has a small quantity of data.
+- The sync server is one Go binary (`tab-stash-server`). It has the API in
+  section 5. Later, it will also have the web page.
+- The database is SQLite. One user has a small quantity of data.
+- The server has more than one account. Each account has the role `user` or
+  `admin` (section 5.7).
 
 ## 4. Records
 
@@ -153,12 +157,37 @@ The server does these steps for each record:
 Response `200`:
 
 ```json
-{ "accepted": 12, "ignored": 1, "rejected": [ { "id": "…", "error": "color is not valid" } ], "cursor": 57 }
+{ "accepted": 12, "ignored": 1, "rejected": [ { "id": "…", "error": "color is not valid" } ] }
 ```
 
 A maximum of 500 records can be in one request.
 
-### 5.5 Errors
+The response has no cursor. Other computers can send changes at the same
+time. If the client used a cursor from this response, it could miss these
+changes. Thus, after `POST /sync`, the client gets the changes with
+`GET /sync?since=<cursor>`, with the cursor of the last `GET`.
+
+Only an account with the role `user` can use `GET /sync` and `POST /sync`.
+An `admin` account gets `403`.
+
+### 5.5 Change the password
+
+`POST /api/v1/auth/password`
+
+Request:
+
+```json
+{ "current": "…", "new": "…" }
+```
+
+The new password must have 10 or more characters. The server logs out all
+other devices of the account. The token of this request stays valid.
+Response: `204`.
+
+Errors: `403` if the current password is not correct. `400` if the new
+password is too short.
+
+### 5.6 Errors
 
 All errors have this body:
 
@@ -170,8 +199,30 @@ All errors have this body:
 | ------ | ------- |
 | 400 | The request is not correct. |
 | 401 | There is no token, or the token is not valid or expired. Log in again. |
+| 403 | The account cannot use this path (for example, an admin on `/sync`). |
+| 404 | The path or the account does not exist. |
+| 409 | The user name is already in use. |
 | 413 | The request has too many records. |
 | 429 | Too many requests. Wait, then try again. |
+| 503 | The server is busy. Wait some seconds, then try again. |
+
+### 5.7 Accounts (admin)
+
+An account with the role `admin` can manage the user accounts. An admin
+cannot read or write records. An admin cannot set the password of an
+account that exists, because the admin could then log in as the user.
+
+| Request | Action | Response |
+| ------- | ------ | -------- |
+| `GET /api/v1/admin/users` | List the accounts. | `200` `{ "users": [ { "username": "…", "role": "user", "createdAt": "…" } ] }` |
+| `POST /api/v1/admin/users` | Add a user account. Body: `{ "username": "…", "password": "…" }`. | `201` |
+| `DELETE /api/v1/admin/users/{username}` | Delete a user account with all its records. | `204` |
+
+- A user name has 1 to 64 letters, digits, `.`, `_`, `-` or `@`.
+- The API adds only accounts with the role `user`.
+- The API cannot delete an `admin` account. Use the command line on the
+  server to add or delete an admin account.
+- An account with the role `user` gets `403` on these paths.
 
 ## 6. Sync in the extension
 
@@ -201,11 +252,16 @@ on each change. The store needs no other change for sync.
 ## 7. Security
 
 - Use HTTPS only. Set `Strict-Transport-Security` on all responses.
-- Keep passwords only as Argon2id hashes.
+- Keep passwords only as Argon2id hashes. Each hash has its own random salt.
+- Use a secret salt for the whole server (`TAB_STASH_PASSWORD_SALT`) in the
+  settings file, not in the database. Send the password through HMAC-SHA256
+  with this secret before Argon2id.
 - Make tokens with 32 random bytes. Keep only a SHA-256 hash of each token in the
   database.
 - Make tokens expire after 90 days. Let the user delete a token from the web page.
-- Limit the login tries: a maximum of 5 for each minute for each IP address.
+- Limit the login tries to 5 for each minute for each IP address. For IPv6,
+  use the /64 network. Also limit the tries to 10 for each minute for each
+  user name.
 - For the API, permit CORS only from the extension origin
   (`chrome-extension://<extension-id>`). Send the token in the
   `Authorization: Bearer <token>` header, not in a cookie.
@@ -227,10 +283,11 @@ extension:
 The web page cannot close or group the tabs of a browser. It opens a saved tab
 as a usual link. "Open all" opens each saved tab in a new browser tab.
 
-## 9. Questions to answer before work starts
+## 9. Decisions
 
-1. Language and framework for the server. A good choice for one user is a single
-   binary (for example Go or Rust) with SQLite.
-2. Is there only one user, or more than one user?
-3. Must the extension use the server login, or a single sign-on system that you already use
-   (for example OpenID Connect)?
+1. The server is in Go. It is one binary with SQLite (`modernc.org/sqlite`,
+   no C compiler necessary).
+2. The server has more than one account. An `admin` account manages the
+   accounts and cannot read the records.
+3. The extension uses the login of the server. Single sign-on is not
+   necessary now.

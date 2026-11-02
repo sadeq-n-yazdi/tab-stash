@@ -59,6 +59,9 @@ func TestPepper(t *testing.T) {
 	if err := SetPepper("too-short"); err == nil {
 		t.Error("short pepper accepted")
 	}
+	if err := SetPepper(strings.Repeat("a", 63) + "!"); err == nil {
+		t.Error("pepper with a character outside [a-zA-Z.-] accepted")
+	}
 
 	// A hash made before the pepper was set.
 	SetPepper("")

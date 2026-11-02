@@ -20,21 +20,26 @@ The automatic tests did not do these checks. Do them in your usual Chrome.
 
 ## 2. Sync server
 
-The design is in [docs/backend-api.md](docs/backend-api.md).
+The design is in [docs/backend-api.md](docs/backend-api.md). The server is in
+[server/](server/README.md).
 
-- [ ] Answer the questions in section 9 of the design:
-  - the language and framework for the server
-  - one user or more than one user
-  - a local login, or single sign-on (for example OpenID Connect)
-- [ ] Write the server: login, logout, `GET /sync` and `POST /sync`.
-- [ ] Write the web page of the server: list, search, filter, edit and delete.
-- [ ] Write the deployment instructions: reverse proxy, TLS certificate,
+- [x] Answer the questions in section 9 of the design (Go, more than one
+      account, local login).
+- [x] Write the server: login, logout, `GET /sync` and `POST /sync`.
+- [x] Add the admin role: add, list and delete accounts, with no access to
+      records.
+- [x] Add the secret salt of the password hashes (`TAB_STASH_PASSWORD_SALT`).
+- [x] Write the deployment instructions: reverse proxy, TLS certificate,
       backup of the database.
-- [ ] Permit CORS only from `chrome-extension://icppdneajfbmmpkgejjpjfegkppmneej`.
+- [x] Permit CORS only from `chrome-extension://icppdneajfbmmpkgejjpjfegkppmneej`.
+- [ ] Write the web page of the server: list, search, filter, edit and delete.
+- [ ] Let a user see and delete the logins (tokens) of the account.
+- [ ] Add a timer that makes a backup each day.
 
 ## 3. Sync in the extension
 
 - [ ] Add a "Server" part to the settings: server URL, user name and password.
+      Keep the server URL in the settings of the extension, not in the code.
 - [ ] Ask for permission to the server URL at runtime
       (`optional_host_permissions`).
 - [ ] Keep the token, the cursor and the list of changed records in

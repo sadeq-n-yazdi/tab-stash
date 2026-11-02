@@ -30,7 +30,7 @@ Example groups:
 7. [Settings](#settings)
 8. [Data and privacy](#data-and-privacy)
 9. [Development](#development)
-10. [Server sync (future work)](#server-sync-future-work)
+10. [Sync server](#sync-server)
 11. [Other documents](#other-documents)
 12. [License](#license)
 
@@ -247,7 +247,8 @@ extension/
   manager/            the manager page
 scripts/make-icons.mjs  makes the PNG icons
 test/                   unit tests and the browser smoke test
-docs/backend-api.md     design of the future sync server
+docs/backend-api.md     API of the sync server
+server/                 sync server in Go (refer to server/README.md)
 ```
 
 To run the unit tests:
@@ -302,12 +303,19 @@ When you delete a record, the extension keeps it with a `deletedAt` time for
 30 days. A sync server can then send the deletion to other computers. After 30
 days, the extension removes the record.
 
-## Server sync (future work)
+## Sync server
 
-A future server will keep the stash on your own web server, with HTTPS and a
-user login. Then you can use the same stash in other browsers and on other
-computers. The file [docs/backend-api.md](docs/backend-api.md) gives the design.
-The extension already has the data model that the server needs.
+The folder [server/](server/README.md) has a sync server in Go. It keeps the
+stash on your own web server, with HTTPS and a user login. Then you can use
+the same stash in other browsers and on other computers.
+
+- The server has user accounts and admin accounts. An admin adds the user
+  accounts, but cannot read the groups and the bookmarks of the users.
+- The server is ready. The extension does not use it yet. Refer to
+  [TODO.md](TODO.md).
+
+To build and install the server, read [server/README.md](server/README.md).
+The API is in [docs/backend-api.md](docs/backend-api.md).
 
 ## Other documents
 
@@ -315,7 +323,8 @@ The extension already has the data model that the server needs.
 | -------- | -------- |
 | [HOWTO.md](HOWTO.md) | Install, move, update and remove the extension. Troubleshooting. |
 | [TODO.md](TODO.md) | Work that is not complete, and checks to do by hand. |
-| [docs/backend-api.md](docs/backend-api.md) | Design of the sync server. |
+| [server/README.md](server/README.md) | Build, install and manage the sync server. |
+| [docs/backend-api.md](docs/backend-api.md) | API of the sync server. |
 | [LICENSE](LICENSE) | The MIT License. |
 
 ## License
