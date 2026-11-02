@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	_ "modernc.org/sqlite" // pure Go SQLite driver: no C compiler needed
 )
@@ -20,14 +21,40 @@ var ErrNotFound = errors.New("not found")
 // ErrExists is returned when a user name is already in use.
 var ErrExists = errors.New("already exists")
 
-const schemaVersion = 1
+// Roles. A user keeps groups and bookmarks. An admin only manages the
+// accounts: an admin has no records and cannot read the records of users.
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
+
+// MaxUsernameLen is the maximum length of a user name.
+const MaxUsernameLen = 64
+
+// ValidUsername reports whether a user name is acceptable: 1 to 64
+// characters, letters, digits, ".", "_", "-" and "@".
+func ValidUsername(name string) bool {
+	if name == "" || textLen(name) > MaxUsernameLen {
+		return false
+	}
+	for _, r := range name {
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-@", r)) {
+			return false
+		}
+	}
+	return true
+}
+
+// schemaVersion 2 added users.role.
+const schemaVersion = 2
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY,
   username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  created_at    TEXT NOT NULL
+  created_at    TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'))
 );
 CREATE TABLE IF NOT EXISTS tokens (
   id           INTEGER PRIMARY KEY,
@@ -64,7 +91,14 @@ type Store struct {
 type User struct {
 	ID        int64
 	Username  string
+	Role      string
 	CreatedAt string
+}
+
+// Account is the user of a valid token.
+type Account struct {
+	ID   int64
+	Role string
 }
 
 // TokenInfo describes an access token (never the token itself).
@@ -112,19 +146,39 @@ func (s *Store) migrate() error {
 	if version > schemaVersion {
 		return fmt.Errorf("database schema version %d is newer than this server (%d)", version, schemaVersion)
 	}
-	if _, err := s.db.Exec(schema); err != nil {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if version == 1 {
+		// Version 1 has no role column. All version 1 accounts are users.
+		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'))`); err != nil {
+			return fmt.Errorf("migrate to version 2: %w", err)
+		}
+	}
+	if _, err := tx.Exec(schema); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
-	_, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
-	return err
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ---------- users ----------
 
-// CreateUser adds a user with an already hashed password.
-func (s *Store) CreateUser(ctx context.Context, username, passwordHash string) error {
+// CreateUser adds an account with an already hashed password. role is
+// RoleUser or RoleAdmin.
+func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role string) error {
+	if !ValidUsername(username) {
+		return errors.New("the user name must have 1 to 64 letters, digits, '.', '_', '-' or '@'")
+	}
+	if role != RoleUser && role != RoleAdmin {
+		return fmt.Errorf("unknown role %q", role)
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)`, username, passwordHash, now())
+		`INSERT INTO users (username, password_hash, created_at, role) VALUES (?, ?, ?, ?)`, username, passwordHash, now(), role)
 	if err != nil && isUniqueErr(err) {
 		return ErrExists
 	}
@@ -153,9 +207,41 @@ func (s *Store) SetPassword(ctx context.Context, username, passwordHash string) 
 	return tx.Commit()
 }
 
-// DeleteUser deletes a user with all tokens and records.
-func (s *Store) DeleteUser(ctx context.Context, username string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE username = ?`, username)
+// ChangePassword sets a new password hash for the user of a token. It
+// deletes all other tokens of the user, but keeps the token keepToken.
+func (s *Store) ChangePassword(ctx context.Context, userID int64, passwordHash string, keepToken []byte) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tokens WHERE user_id = ? AND token_hash != ?`, userID, keepToken); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// PasswordHashByID returns the password hash of an account.
+func (s *Store) PasswordHashByID(ctx context.Context, userID int64) (string, error) {
+	var hash string
+	err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return hash, err
+}
+
+// DeleteUser deletes an account with all tokens and records. If role is
+// not empty, it deletes the account only if it has this role.
+func (s *Store) DeleteUser(ctx context.Context, username, role string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE username = ? AND (? = '' OR role = ?)`, username, role, role)
 	if err != nil {
 		return err
 	}
@@ -167,7 +253,7 @@ func (s *Store) DeleteUser(ctx context.Context, username string) error {
 
 // ListUsers returns all users.
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, username, created_at FROM users ORDER BY username`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, username, role, created_at FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +261,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
@@ -205,30 +291,32 @@ func (s *Store) CreateToken(ctx context.Context, userID int64, tokenHash []byte,
 	return err
 }
 
-// UserForToken returns the user of a valid, not expired token. It also
-// records the time of use (at most once each minute, to limit writes).
-func (s *Store) UserForToken(ctx context.Context, tokenHash []byte) (int64, error) {
-	var tokenID, userID int64
+// AccountForToken returns the account of a valid, not expired token. It
+// also records the time of use (at most once each minute, to limit writes).
+func (s *Store) AccountForToken(ctx context.Context, tokenHash []byte) (Account, error) {
+	var tokenID int64
+	var acc Account
 	var expires, lastUsed string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, expires_at, last_used_at FROM tokens WHERE token_hash = ?`, tokenHash).
-		Scan(&tokenID, &userID, &expires, &lastUsed)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT t.id, t.user_id, u.role, t.expires_at, t.last_used_at
+		FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?`, tokenHash).
+		Scan(&tokenID, &acc.ID, &acc.Role, &expires, &lastUsed)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrNotFound
+		return Account{}, ErrNotFound
 	}
 	if err != nil {
-		return 0, err
+		return Account{}, err
 	}
 	nowT := time.Now().UTC()
 	if exp, err := time.Parse(time.RFC3339, expires); err != nil || !nowT.Before(exp) {
-		return 0, ErrNotFound
+		return Account{}, ErrNotFound
 	}
 	if lu, err := time.Parse(time.RFC3339, lastUsed); err != nil || nowT.Sub(lu) > time.Minute {
 		if _, err := s.db.ExecContext(ctx, `UPDATE tokens SET last_used_at = ? WHERE id = ?`, now(), tokenID); err != nil {
-			return 0, err
+			return Account{}, err
 		}
 	}
-	return userID, nil
+	return acc, nil
 }
 
 // DeleteToken deletes one token (logout).

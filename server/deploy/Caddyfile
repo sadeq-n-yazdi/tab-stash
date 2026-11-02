@@ -2,5 +2,9 @@
 # Change the host name to the name of your server.
 tabs.example.com {
 	encode gzip
-	reverse_proxy 127.0.0.1:8080
+	reverse_proxy 127.0.0.1:8080 {
+		# The server reads the client address from this header
+		# (TAB_STASH_CLIENT_IP_HEADER=X-Real-IP).
+		header_up X-Real-IP {remote_host}
+	}
 }

@@ -1,5 +1,5 @@
 # systemd unit for tab-stash-server.
-# Install: see server/README.md, part "Run the server with systemd".
+# Install: see server/README.md, part "Install on a Linux server".
 [Unit]
 Description=Tab Stash sync server
 After=network.target
@@ -9,15 +9,16 @@ Type=simple
 User=tab-stash
 Group=tab-stash
 WorkingDirectory=/var/lib/tab-stash
-Environment=TAB_STASH_DB=/var/lib/tab-stash/tab-stash.db
-Environment=TAB_STASH_ADDR=127.0.0.1:8080
-# The reverse proxy on the same host sets X-Forwarded-For.
-Environment=TAB_STASH_TRUST_PROXY=1
-# Add more origins with commas, for example a second extension ID.
-Environment=TAB_STASH_ALLOW_ORIGIN=chrome-extension://icppdneajfbmmpkgejjpjfegkppmneej
+# All settings are in this file. Example: deploy/tab-stash.env.example.
+EnvironmentFile=/etc/tab-stash/tab-stash.env
 ExecStart=/usr/local/bin/tab-stash-server serve
 Restart=on-failure
 RestartSec=5
+
+# Memory. One login needs about 19 MiB for the password check.
+Environment=GOMEMLIMIT=40MiB
+MemoryHigh=64M
+MemoryMax=96M
 
 # Hardening
 NoNewPrivileges=true

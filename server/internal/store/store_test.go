@@ -17,7 +17,7 @@ func openTest(t *testing.T) (*Store, int64) {
 	}
 	t.Cleanup(func() { st.Close() })
 	ctx := context.Background()
-	if err := st.CreateUser(ctx, "alice", "hash"); err != nil {
+	if err := st.CreateUser(ctx, "alice", "hash", RoleUser); err != nil {
 		t.Fatal(err)
 	}
 	id, _, err := st.PasswordHash(ctx, "ALICE") // user names ignore case
@@ -144,13 +144,13 @@ func TestPagination(t *testing.T) {
 func TestUsersAreSeparate(t *testing.T) {
 	st, alice := openTest(t)
 	ctx := context.Background()
-	st.CreateUser(ctx, "bob", "hash")
+	st.CreateUser(ctx, "bob", "hash", RoleUser)
 	bob, _, _ := st.PasswordHash(ctx, "bob")
 	st.PutRecords(ctx, alice, []Record{mustParse(t, groupJSON)})
 	if recs, _, _, _ := st.Changes(ctx, bob, 0, 10); len(recs) != 0 {
 		t.Errorf("bob sees %d records of alice", len(recs))
 	}
-	if err := st.CreateUser(ctx, "Alice", "x"); err != ErrExists {
+	if err := st.CreateUser(ctx, "Alice", "x", RoleUser); err != ErrExists {
 		t.Errorf("duplicate user: %v", err)
 	}
 }
@@ -171,5 +171,62 @@ func TestParseRecordRejects(t *testing.T) {
 		if _, _, err := ParseRecord(json.RawMessage(raw)); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+// A version 1 database (no role column) opens, and its accounts become users.
+func TestMigrateFromV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v1.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`DROP TABLE users`,
+		`CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL)`,
+		`INSERT INTO users (username, password_hash, created_at) VALUES ('old', 'h', '2026-01-01T00:00:00Z')`,
+		`PRAGMA user_version = 1`,
+	} {
+		if _, err := st.db.Exec(q); err != nil {
+			t.Fatal(q, err)
+		}
+	}
+	st.Close()
+
+	for range 2 { // the second open must not migrate again
+		st, err = Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		users, err := st.ListUsers(context.Background())
+		if err != nil || len(users) != 1 || users[0].Role != RoleUser {
+			t.Fatalf("users after migration: %+v %v", users, err)
+		}
+		var v int
+		st.db.QueryRow(`PRAGMA user_version`).Scan(&v)
+		if v != schemaVersion {
+			t.Errorf("user_version = %d", v)
+		}
+		st.Close()
+	}
+}
+
+func TestRolesAndDelete(t *testing.T) {
+	st, _ := openTest(t)
+	ctx := context.Background()
+	if err := st.CreateUser(ctx, "root", "h", RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateUser(ctx, "x", "h", "owner"); err == nil {
+		t.Error("unknown role accepted")
+	}
+	if err := st.CreateUser(ctx, "bad name", "h", RoleUser); err == nil {
+		t.Error("bad user name accepted")
+	}
+	if err := st.DeleteUser(ctx, "root", RoleUser); err != ErrNotFound {
+		t.Errorf("delete admin with role filter user: %v", err)
+	}
+	if err := st.DeleteUser(ctx, "root", ""); err != nil {
+		t.Errorf("delete admin without filter: %v", err)
 	}
 }

@@ -13,12 +13,13 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Argon2id parameters (OWASP recommendation: m=19 MiB, t=2, p=1 is the
-// minimum; these values are higher and still fast on a small server).
+// Argon2id parameters: the OWASP values (m=19 MiB, t=2, p=1). They keep the
+// memory low on a small server. A stored hash keeps its own parameters, so
+// these values can change later without a problem for old hashes.
 const (
-	argonTime    = 3
-	argonMemory  = 64 * 1024 // KiB
-	argonThreads = 2
+	argonTime    = 2
+	argonMemory  = 19 * 1024 // KiB
+	argonThreads = 1
 	argonKeyLen  = 32
 	saltLen      = 16
 	tokenBytes   = 32
@@ -26,13 +27,41 @@ const (
 
 var b64 = base64.RawStdEncoding
 
-// HashPassword returns a PHC string: $argon2id$v=19$m=65536,t=3,p=2$<salt>$<hash>.
+// Limits of a new password.
+const (
+	MinPasswordLen = 10
+	MaxPasswordLen = 1024
+)
+
+// CheckNewPassword returns an error if a new password is too short or too long.
+func CheckNewPassword(password string) error {
+	n := len([]rune(password))
+	if n < MinPasswordLen {
+		return fmt.Errorf("the password must have %d or more characters", MinPasswordLen)
+	}
+	if n > MaxPasswordLen {
+		return fmt.Errorf("the password must have %d or fewer characters", MaxPasswordLen)
+	}
+	return nil
+}
+
+// hashSlot lets only one Argon2 computation run at a time, so that many
+// logins at the same time cannot use all the memory of the server.
+var hashSlot = make(chan struct{}, 1)
+
+func idKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	hashSlot <- struct{}{}
+	defer func() { <-hashSlot }()
+	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+}
+
+// HashPassword returns a PHC string: $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>.
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	key := idKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
@@ -60,7 +89,10 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	if memory > 256*1024 || time > 10 || threads == 0 || len(want) == 0 {
+		return false, errors.New("argon2 parameters out of range")
+	}
+	got := idKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 

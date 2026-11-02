@@ -35,7 +35,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	if err := st.CreateUser(context.Background(), "alice", testHash); err != nil {
+	if err := st.CreateUser(context.Background(), "alice", testHash, store.RoleUser); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(New(st, Config{AllowedOrigins: []string{testOrigin}}))
@@ -177,13 +177,13 @@ func TestLimiterWindow(t *testing.T) {
 	l := newLimiter(2, time.Minute)
 	now := time.Now()
 	l.now = func() time.Time { return now }
-	l.fail("ip")
-	l.fail("ip")
-	if l.allow("ip") || !l.allow("other") {
+	l.take("ip")
+	l.take("ip")
+	if l.take("ip") || !l.take("other") {
 		t.Fatal("limit not applied per key")
 	}
 	now = now.Add(time.Minute + time.Second)
-	if !l.allow("ip") {
+	if !l.take("ip") {
 		t.Error("limit not reset after the window")
 	}
 	if len(l.entries) != 1 { // "other" was removed by the sweep

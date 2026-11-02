@@ -43,16 +43,25 @@ func (l *limiter) current(key string) *window {
 	return e
 }
 
-// allow reports whether the key can try again.
-func (l *limiter) allow(key string) bool {
+// take reserves one try for the key. It returns false if the key has no
+// tries left in this window. The reservation happens under the lock, so
+// parallel requests cannot all pass before a failure is counted.
+func (l *limiter) take(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.current(key).fails < l.max
+	e := l.current(key)
+	if e.fails >= l.max {
+		return false
+	}
+	e.fails++
+	return true
 }
 
-// fail records a failed try.
-func (l *limiter) fail(key string) {
+// refund gives back a try that take reserved (after a correct login).
+func (l *limiter) refund(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.current(key).fails++
+	if e := l.entries[key]; e != nil && e.fails > 0 {
+		e.fails--
+	}
 }
