@@ -150,7 +150,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ok := false
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		auth.VerifyDummy(req.Password) // same time as a real check
+		// Same time and same errors as a real check.
+		if err := auth.VerifyDummy(req.Password); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
 	case err != nil:
 		s.internalError(w, r, err)
 		return
@@ -170,7 +174,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	s.users.refund(userKey)
 	if auth.NeedsRehash(hash) {
 		if newHash, err := auth.HashPassword(req.Password); err == nil {
-			if err := s.store.UpdatePasswordHash(r.Context(), userID, newHash); err != nil {
+			if err := s.store.UpdatePasswordHash(r.Context(), userID, hash, newHash); err != nil {
 				s.cfg.Logger.Warn("rehash password", "error", err)
 			}
 		}

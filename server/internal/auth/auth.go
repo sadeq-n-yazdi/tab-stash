@@ -133,9 +133,11 @@ var dummyHash = func() string {
 	return h
 }()
 
-// VerifyDummy spends the same time as a real password check.
-func VerifyDummy(password string) {
-	_, _ = VerifyPassword(password, dummyHash)
+// VerifyDummy spends the same time as a real password check. It returns
+// an error in the same cases as VerifyPassword (for example ErrBusy).
+func VerifyDummy(password string) error {
+	_, err := VerifyPassword(password, dummyHash)
+	return err
 }
 
 // NewToken returns a random token (sent to the client) and its SHA-256 hash

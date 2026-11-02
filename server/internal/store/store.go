@@ -229,9 +229,12 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, passwordHash s
 }
 
 // UpdatePasswordHash replaces the hash of the same password (new
-// parameters). It does not delete tokens.
-func (s *Store) UpdatePasswordHash(ctx context.Context, userID int64, passwordHash string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+// parameters). It changes the row only if the stored hash is still oldHash,
+// so it cannot undo a password change that happened in the meantime. It
+// does not delete tokens.
+func (s *Store) UpdatePasswordHash(ctx context.Context, userID int64, oldHash, newHash string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?`, newHash, userID, oldHash)
 	return err
 }
 
