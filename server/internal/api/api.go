@@ -55,6 +55,7 @@ type Server struct {
 	origins map[string]bool
 	limiter *limiter // login tries for each client address
 	users   *limiter // login tries for each user name
+	pwTries *limiter // password change tries for each account
 	handler http.Handler
 }
 
@@ -67,7 +68,7 @@ func New(st *store.Store, cfg Config) *Server {
 		cfg.Logger = slog.Default()
 	}
 	s := &Server{store: st, cfg: cfg, origins: map[string]bool{}, limiter: newLimiter(loginTries, loginWindow),
-		users: newLimiter(userLoginTries, loginWindow)}
+		users: newLimiter(userLoginTries, loginWindow), pwTries: newLimiter(loginTries, loginWindow)}
 	for _, o := range cfg.AllowedOrigins {
 		if o = strings.TrimSpace(o); o != "" {
 			s.origins[o] = true
@@ -129,6 +130,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_request", "username and password are required.")
 		return
 	}
+	if !store.ValidUsername(req.Username) {
+		// No such account can exist. Answer at once, without a try.
+		writeError(w, http.StatusUnauthorized, "invalid_credentials", "The user name or the password is not correct.")
+		return
+	}
 	ipKey := limitKey(s.clientIP(r))
 	userKey := strings.ToLower(req.Username)
 	if !s.limiter.take(ipKey) {
@@ -162,6 +168,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 	s.limiter.refund(ipKey)
 	s.users.refund(userKey)
+	if auth.NeedsRehash(hash) {
+		if newHash, err := auth.HashPassword(req.Password); err == nil {
+			if err := s.store.UpdatePasswordHash(r.Context(), userID, newHash); err != nil {
+				s.cfg.Logger.Warn("rehash password", "error", err)
+			}
+		}
+	}
 
 	token, tokenHash, err := auth.NewToken()
 	if err != nil {
@@ -275,7 +288,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	acc := accountFrom(r.Context())
 	key := "id:" + strconv.FormatInt(acc.ID, 10)
-	if !s.users.take(key) {
+	if !s.pwTries.take(key) {
 		tooManyTries(w)
 		return
 	}
@@ -293,7 +306,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "invalid_credentials", "The current password is not correct.")
 		return
 	}
-	s.users.refund(key)
+	s.pwTries.refund(key)
 	if err := auth.CheckNewPassword(req.New); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_password", err.Error()+".")
 		return
@@ -528,13 +541,11 @@ func limitKey(addr string) string {
 // clientIP returns the IP for the login rate limit.
 func (s *Server) clientIP(r *http.Request) string {
 	if name := s.cfg.ClientIPHeader; name != "" {
-		v := r.Header.Get(name)
-		if strings.EqualFold(name, "X-Forwarded-For") {
-			// The proxy appends the address that it saw. Only the last
-			// entry is not set by the client.
-			parts := strings.Split(v, ",")
-			v = parts[len(parts)-1]
-		}
+		// Use the last entry of all lines of the header. A proxy appends
+		// (X-Forwarded-For) or replaces (X-Real-IP) the value, so the last
+		// entry is the one that the client cannot set.
+		parts := strings.Split(strings.Join(r.Header.Values(name), ","), ",")
+		v := parts[len(parts)-1]
 		if ip := net.ParseIP(strings.TrimSpace(v)); ip != nil {
 			return ip.String()
 		}
@@ -564,6 +575,11 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func (s *Server) internalError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, auth.ErrBusy) {
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusServiceUnavailable, "busy", "The server is busy. Wait some seconds, then try again.")
+		return
+	}
 	s.cfg.Logger.Error("internal error", "path", r.URL.Path, "error", err)
 	writeError(w, http.StatusInternalServerError, "internal_error", "An internal error occurred.")
 }

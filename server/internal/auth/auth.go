@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -45,14 +46,34 @@ func CheckNewPassword(password string) error {
 	return nil
 }
 
-// hashSlot lets only one Argon2 computation run at a time, so that many
-// logins at the same time cannot use all the memory of the server.
-var hashSlot = make(chan struct{}, 1)
+// hashSlots limits the Argon2 computations that run at the same time, so
+// that many logins at the same time cannot use all the memory of the server.
+var hashSlots = make(chan struct{}, 2)
 
-func idKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
-	hashSlot <- struct{}{}
-	defer func() { <-hashSlot }()
-	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+// hashWait is the maximum time to wait for a free slot.
+const hashWait = 5 * time.Second
+
+// ErrBusy is returned when all hash slots stay in use for hashWait.
+var ErrBusy = errors.New("the server is busy; try again")
+
+func idKey(password, salt []byte, t, memory uint32, threads uint8, keyLen uint32) ([]byte, error) {
+	timer := time.NewTimer(hashWait)
+	defer timer.Stop()
+	select {
+	case hashSlots <- struct{}{}:
+	case <-timer.C:
+		return nil, ErrBusy
+	}
+	defer func() { <-hashSlots }()
+	return argon2.IDKey(password, salt, t, memory, threads, keyLen), nil
+}
+
+// NeedsRehash reports whether a stored hash uses parameters that are not
+// the current ones. The server then hashes the password again after a
+// correct login, so that all checks take the same time.
+func NeedsRehash(encoded string) bool {
+	return !strings.HasPrefix(encoded, fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$",
+		argon2.Version, argonMemory, argonTime, argonThreads))
 }
 
 // HashPassword returns a PHC string: $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>.
@@ -61,7 +82,10 @@ func HashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key := idKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	key, err := idKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
@@ -92,13 +116,22 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	if memory > 256*1024 || time > 10 || threads == 0 || len(want) == 0 {
 		return false, errors.New("argon2 parameters out of range")
 	}
-	got := idKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	got, err := idKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	if err != nil {
+		return false, err
+	}
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
 // dummyHash is verified when a user does not exist, so that the response
 // time does not show which user names exist.
-var dummyHash, _ = HashPassword("dummy password for timing")
+var dummyHash = func() string {
+	h, err := HashPassword("dummy password for timing")
+	if err != nil {
+		panic(err)
+	}
+	return h
+}()
 
 // VerifyDummy spends the same time as a real password check.
 func VerifyDummy(password string) {

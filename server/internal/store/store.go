@@ -228,6 +228,13 @@ func (s *Store) ChangePassword(ctx context.Context, userID int64, passwordHash s
 	return tx.Commit()
 }
 
+// UpdatePasswordHash replaces the hash of the same password (new
+// parameters). It does not delete tokens.
+func (s *Store) UpdatePasswordHash(ctx context.Context, userID int64, passwordHash string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+	return err
+}
+
 // PasswordHashByID returns the password hash of an account.
 func (s *Store) PasswordHashByID(ctx context.Context, userID int64) (string, error) {
 	var hash string
