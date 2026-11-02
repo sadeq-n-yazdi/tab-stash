@@ -44,7 +44,9 @@ try {
   worker ??= await context.waitForEvent('serviceworker', { timeout: 15_000 });
   const extId = new URL(worker.url()).host;
   const extUrl = (p) => `chrome-extension://${extId}/${p}`;
-  console.log('✔ service worker started:', extId);
+  // The "key" in manifest.json fixes the ID, whatever the folder is.
+  assert.equal(extId, 'icppdneajfbmmpkgejjpjfegkppmneej', 'extension ID must not depend on the folder');
+  console.log('✔ service worker started with the fixed ID:', extId);
 
   await worker.evaluate(async () => {
     for (let i = 0; i < 50; i++) {

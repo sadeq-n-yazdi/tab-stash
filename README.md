@@ -31,18 +31,41 @@ Example groups:
 8. [Data and privacy](#data-and-privacy)
 9. [Development](#development)
 10. [Server sync (future work)](#server-sync-future-work)
+11. [Other documents](#other-documents)
+12. [License](#license)
 
 ## Install the extension
 
 The extension is not in the Chrome Web Store. Load it as an unpacked extension.
+You need Google Chrome 116 or later, or Chromium 116 or later. You do not need
+Node.js to use the extension.
 
-1. In Chrome, go to `chrome://extensions`.
-2. Set **Developer mode** to on. The switch is at the top right.
-3. Click **Load unpacked**.
-4. Select the `extension` folder of this repository.
-5. Click the puzzle icon in the toolbar, and pin **Tab Shelf**.
+1. Get the files:
+
+   ```sh
+   git clone https://github.com/sadeq-n-yazdi/my-tab-stash.git
+   ```
+
+   If you do not have Git, download the ZIP file from the repository page (**Code** > **Download ZIP**). Then extract it.
+2. Keep the files in this folder. Chrome loads the extension from this folder each time that it starts.
+3. In Chrome, go to `chrome://extensions`.
+4. Set **Developer mode** to on. The switch is at the top right.
+5. Click **Load unpacked**.
+6. Select the `extension` folder. This folder contains `manifest.json`.
+7. Make sure that the ID on the **Tab Shelf** card is `icppdneajfbmmpkgejjpjfegkppmneej`.
+8. Click the puzzle icon in the toolbar, and pin **Tab Shelf**.
 
 When you install the extension, it makes one group with the name "Inbox".
+
+The extension ID is the same on all computers, because `manifest.json` has a
+fixed `key`. Chrome keeps your data under this ID.
+
+For the full procedure, read [HOWTO.md](HOWTO.md). It also tells you how to:
+
+- move your saved tabs to a different computer
+- update the extension
+- remove the extension
+- find and repair problems
 
 ## Save tabs
 
@@ -285,3 +308,16 @@ A future server will keep the shelf on your own web server, with HTTPS and a
 user login. Then you can use the same shelf in other browsers and on other
 computers. The file [docs/backend-api.md](docs/backend-api.md) gives the design.
 The extension already has the data model that the server needs.
+
+## Other documents
+
+| Document | Contents |
+| -------- | -------- |
+| [HOWTO.md](HOWTO.md) | Install, move, update and remove the extension. Troubleshooting. |
+| [TODO.md](TODO.md) | Work that is not complete, and checks to do by hand. |
+| [docs/backend-api.md](docs/backend-api.md) | Design of the sync server. |
+| [LICENSE](LICENSE) | The MIT License. |
+
+## License
+
+Tab Shelf is free software under the MIT License. Read [LICENSE](LICENSE).
