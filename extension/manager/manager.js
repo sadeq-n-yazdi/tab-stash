@@ -2,11 +2,13 @@ import { createStore } from '../lib/store.js';
 import { COLORS, COLOR_HEX, collectLabels, filterBookmarks, parseImport, isRestrictedUrl } from '../lib/model.js';
 import { openBookmarks } from '../lib/actions.js';
 import { SYNC_KEY, DEFAULT_SYNC, normalizeServerUrl, originPattern } from '../lib/sync.js';
+import { createPreviews, indexedDbBackend, onPreviewsChanged } from '../lib/previews.js';
 import {
   h, faviconUrl, colorDot, colorPicker, pickedColor, labelChips, attachLabelSuggestions, formatDate, hostOf,
 } from '../lib/ui.js';
 
 const store = createStore(chrome.storage.local);
+const previews = createPreviews({ backend: indexedDbBackend() });
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -17,6 +19,7 @@ const state = {
   filter: { text: '', labels: [], colors: [], groupId: '' },
   selected: new Set(),
   sync: { ...DEFAULT_SYNC },
+  withPreview: new Set(), // ids of bookmarks that have a preview
 };
 
 // ---------- helpers ----------
@@ -218,6 +221,9 @@ function bookmarkItem(b) {
       b.note ? h('p', { class: 'note' }, b.note) : null,
       b.labels.length ? h('div', { class: 'chips' }, labelChips(b.labels, { onClick: toggleLabel, active: state.filter.labels })) : null),
     h('div', { class: 'row-actions' },
+      state.withPreview.has(b.id)
+        ? h('button', { type: 'button', class: 'small preview-btn', title: 'Show the picture of the page', onclick: () => guard(() => showPreview(b)) }, 'Preview')
+        : null,
       h('button', { type: 'button', class: 'small', onclick: () => openOne(b, false) }, 'Open'),
       h('button', { type: 'button', class: 'small', title: 'Open and remove from the stash', onclick: () => openOne(b, true) }, 'Restore'),
       h('button', { type: 'button', class: 'small', onclick: () => editBookmark(b) }, 'Edit'),
@@ -252,12 +258,31 @@ async function reload() {
   state.bookmarks = data.bookmarks;
   state.settings = data.settings;
   state.groupsById = new Map(data.groups.map((g) => [g.id, g]));
+  state.withPreview = await previews.bookmarkIds().catch(() => new Set());
   if (state.filter.groupId && !state.groupsById.has(state.filter.groupId)) {
     state.filter.groupId = '';
     writeHash();
   }
   render();
   await renderSync();
+}
+
+// ---------- previews ----------
+
+async function showPreview(bookmark) {
+  const found = await previews.get(bookmark.id);
+  if (!found) {
+    setStatus('This bookmark has no preview.', 'error');
+    return;
+  }
+  const dialog = $('preview-dialog');
+  $('preview-title').textContent = bookmark.title;
+  $('preview-image').src = found.image;
+  $('preview-image').alt = `Picture of ${bookmark.title}`;
+  const where = { local: 'only on this computer', device: 'on the server, for this computer', account: 'on the server, for all your computers' }[found.meta.scope] ?? '';
+  $('preview-info').textContent = `Taken ${formatDate(found.meta.createdAt)}. Kept ${where}.`;
+  $('preview-open').onclick = () => { dialog.close(); openOne(bookmark, false); };
+  dialog.showModal();
 }
 
 // ---------- sync ----------
@@ -541,12 +566,15 @@ function openSettings() {
   const dialog = $('settings-dialog');
   const form = $('settings-form');
   for (const input of form.querySelectorAll('input[type="checkbox"]')) input.checked = Boolean(state.settings[input.name]);
+  form.elements.previewScope.value = state.settings.previewScope ?? 'local';
   dialog.returnValue = '';
   dialog.showModal();
   dialog.addEventListener('close', () => guard(async () => {
     if (dialog.returnValue !== 'save') return;
     const changes = {};
     for (const input of form.querySelectorAll('input[type="checkbox"]')) changes[input.name] = input.checked;
+    changes.previewScope = form.elements.previewScope.value;
+    // The service worker moves the existing previews to the new place.
     await store.updateSettings(changes);
     setStatus('Settings saved.', 'ok');
   }), { once: true });
@@ -594,6 +622,11 @@ chrome.storage.onChanged.addListener((_changes, area) => {
   reloadTimer = setTimeout(() => guard(reload), 80);
 });
 window.addEventListener('hashchange', () => { readHash(); render(); });
+onPreviewsChanged(() => {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => guard(reload), 80);
+});
+$('preview-close').addEventListener('click', () => $('preview-dialog').close());
 
 // Get the changes of other computers when the manager opens or is shown again.
 // The service worker syncs only if the last sync is older than one minute.

@@ -5,9 +5,16 @@ import { createStore } from './lib/store.js';
 import { collectTabs, saveTabs, focusedWindowId } from './lib/actions.js';
 import { GROUP_PREFIX, BOOKMARK_PREFIX } from './lib/model.js';
 import { createSync } from './lib/sync.js';
+import { createPreviews, indexedDbBackend } from './lib/previews.js';
+import { getDeviceId } from './lib/device.js';
+import { makeThumbnail } from './lib/thumbnail.js';
 
 const store = createStore(chrome.storage.local);
-const sync = createSync({ area: chrome.storage.local, store, fetch: (...args) => fetch(...args) });
+const previews = createPreviews({ backend: indexedDbBackend() });
+const deviceId = () => getDeviceId(chrome.storage.local);
+const sync = createSync({
+  area: chrome.storage.local, store, fetch: (...args) => fetch(...args), previews, deviceId,
+});
 const SYNC_SOON = 'sync-soon';
 const SYNC_PERIODIC = 'sync-periodic';
 const SYNC_DELAY_MINUTES = 0.5; // the shortest delay that chrome.alarms permits
@@ -21,6 +28,8 @@ const MENU_MANAGER = 'open-manager';
 // ---------- lifecycle ----------
 
 chrome.runtime.onInstalled.addListener(async () => {
+  // Also after an update: an install from before 0.5.0 has no device ID yet.
+  await deviceId();
   await store.ensureDefaultGroup();
   await rebuildMenus();
   await sync.purge();
@@ -39,7 +48,48 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // Group names in the context menu must follow changes made on any page.
   if (Object.keys(changes).some((k) => k.startsWith(GROUP_PREFIX) || k === 'settings')) rebuildMenus();
   scheduleSync(changes);
+  followDeletions(changes);
+  if (changes.settings) followPreviewScope(changes.settings);
 });
+
+// ---------- previews ----------
+
+/** Takes a preview of the visible tab, if it is one of the tabs to save. */
+async function capturePreview(tabs, settings) {
+  if (!settings.savePreviews) return null;
+  const tab = tabs.find((t) => t.active);
+  if (!tab) return null;
+  try {
+    // Needs the activeTab grant: a click on the icon, a shortcut or a menu.
+    const shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 80 });
+    return { url: tab.url, image: await makeThumbnail(shot) };
+  } catch (error) {
+    // No preview is not an error of the save.
+    console.info('[Tab Stash] no preview:', error?.message ?? error);
+    return null;
+  }
+}
+
+async function keepPreview(shot, result, settings) {
+  const bookmark = shot && result.addedBookmarks?.find((b) => b.url === shot.url);
+  if (!bookmark) return;
+  await previews.save(bookmark.id, shot.image, { scope: settings.previewScope, deviceId: await deviceId() });
+  if (settings.previewScope !== 'local') await syncSoon();
+}
+
+/** A deleted bookmark deletes its preview (here or from another computer). */
+async function followDeletions(changes) {
+  const ids = Object.entries(changes)
+    .filter(([k, c]) => k.startsWith(BOOKMARK_PREFIX) && (c.newValue?.deletedAt || !c.newValue) && !c.oldValue?.deletedAt)
+    .map(([k]) => k.slice(BOOKMARK_PREFIX.length));
+  if (ids.length && (await previews.deleteFor(ids))) await syncSoon();
+}
+
+async function followPreviewScope({ oldValue, newValue }) {
+  const scope = newValue?.previewScope;
+  if (!scope || scope === (oldValue?.previewScope ?? 'local')) return;
+  if (await previews.setScope(scope, await deviceId())) await syncSoon();
+}
 
 // ---------- sync ----------
 
@@ -82,6 +132,11 @@ async function startSyncTimer() {
   if (!(await chrome.alarms.get(SYNC_PERIODIC))) {
     await chrome.alarms.create(SYNC_PERIODIC, { periodInMinutes: SYNC_PERIOD_MINUTES });
   }
+}
+
+async function syncSoon() {
+  const { token } = await sync.getState();
+  if (token) await chrome.alarms.create(SYNC_SOON, { delayInMinutes: SYNC_DELAY_MINUTES });
 }
 
 /** Starts a sync soon after a local change. Writes of the sync itself do not count. */
@@ -139,11 +194,15 @@ async function save({ scope, windowId, tabGroupId, tabIds, target, details, clos
   if (!tabs.length) throw new Error('No tabs to save on this page.');
   let resolvedTarget = target;
   if (!resolvedTarget) resolvedTarget = { groupId: (await store.ensureDefaultGroup()).id };
+  // Take the picture first: the save can close the tab.
+  const shot = await capturePreview(tabs, settings);
   const result = await saveTabs(chrome, store, {
     tabs, target: resolvedTarget, details, close: close ?? settings.closeAfterSave,
   });
+  await keepPreview(shot, result, settings).catch((error) => console.warn('[Tab Stash] preview not kept:', error));
   await reportSaved(result);
-  return result;
+  const { addedBookmarks, ...summary } = result;
+  return summary;
 }
 
 async function openManager() {

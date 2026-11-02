@@ -61,7 +61,10 @@ export async function saveTabs(chrome, store, { tabs, target, details = {}, clos
 
   let closed = 0;
   if (close) closed = await closeTabs(chrome, tabs);
-  return { groupId: group.id, groupName: group.name, added: added.length, duplicates, closed };
+  return {
+    groupId: group.id, groupName: group.name, added: added.length, duplicates, closed,
+    addedBookmarks: added.map((b) => ({ id: b.id, url: b.url })),
+  };
 }
 
 /**

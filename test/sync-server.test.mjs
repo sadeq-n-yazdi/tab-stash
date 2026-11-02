@@ -6,7 +6,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeStorageArea } from './fakes.mjs';
 import { createStore } from '../extension/lib/store.js';
-import { createSync } from '../extension/lib/sync.js';
+import { createSync, MAX_PUSH_BYTES } from '../extension/lib/sync.js';
+import { createPreviews, memoryBackend } from '../extension/lib/previews.js';
 import { hasGo, startGoServer, TEST_PASSWORD as PASSWORD } from './go-server.mjs';
 
 async function startServer(t) {
@@ -15,11 +16,17 @@ async function startServer(t) {
   return url;
 }
 
+let deviceCount = 0;
 function device(fetchImpl = fetch) {
   const area = fakeStorageArea();
   const store = createStore(area);
-  return { area, store, sync: createSync({ area, store, fetch: fetchImpl }) };
+  const previews = createPreviews({ backend: memoryBackend(), notify: () => {} });
+  const id = `device-${String(++deviceCount).padStart(4, '0')}`;
+  const sync = createSync({ area, store, fetch: fetchImpl, previews, deviceId: async () => id });
+  return { area, store, previews, id, sync };
 }
+
+const IMG = `data:image/jpeg;base64,${'A'.repeat(1000)}`;
 
 test('sync through the real server', { skip: !hasGo && 'Go is not installed' }, async (t) => {
   const url = await startServer(t);
@@ -96,6 +103,78 @@ test('sync through the real server', { skip: !hasGo && 'Go is not installed' }, 
     await a.sync.syncNow();
     await a.sync.purge(0, later);
     assert.equal(await a.store.getBookmark(bm.id), null, 'removed after the sync');
+  });
+
+  await t.test('previews go to the right devices', async () => {
+    const a = device();
+    const b = device();
+    await login(a);
+    await login(b);
+    const [group] = (await a.store.load()).groups;
+    const { added } = await a.store.addBookmarks(group.id, [
+      { url: 'https://shared.example/' }, { url: 'https://mine.example/' }, { url: 'https://local.example/' },
+    ]);
+    const [shared, mine, local] = added;
+    await a.previews.save(shared.id, IMG, { scope: 'account' });
+    await a.previews.save(mine.id, IMG, { scope: 'device', deviceId: a.id });
+    await a.previews.save(local.id, IMG, { scope: 'local' });
+    const sent = await a.sync.syncNow();
+    assert.equal(sent.rejected, 0);
+    await b.sync.syncNow();
+    assert.equal((await b.previews.get(shared.id))?.image, IMG, 'B gets the shared preview');
+    assert.equal(await b.previews.get(mine.id), null, 'B does not get the preview of device A');
+    assert.equal(await b.previews.get(local.id), null, 'a local preview is never sent');
+
+    // A new install of device A gets its own device preview back.
+    const a2 = device();
+    a2.id = a.id;
+    const again = createSync({ area: a2.area, store: a2.store, fetch, previews: a2.previews, deviceId: async () => a.id });
+    await again.login({ serverUrl: url, username: 'alice', password: PASSWORD, client: 'test' });
+    assert.equal((await a2.previews.get(mine.id))?.image, IMG);
+
+    // A deleted bookmark deletes its preview on the other device.
+    await a.store.deleteBookmarks([shared.id]);
+    await a.previews.deleteFor([shared.id]);
+    await a.sync.syncNow();
+    await b.sync.syncNow();
+    assert.equal(await b.previews.get(shared.id), null);
+  });
+
+  await t.test('a change to local deletes the preview on the server', async () => {
+    const a = device();
+    const b = device();
+    await login(a);
+    await login(b);
+    const [group] = (await a.store.load()).groups;
+    const { added: [bm] } = await a.store.addBookmarks(group.id, [{ url: 'https://scope.example/' }]);
+    await a.previews.save(bm.id, IMG, { scope: 'account' });
+    await a.sync.syncNow();
+    await b.sync.syncNow();
+    assert.ok(await b.previews.get(bm.id));
+    await a.previews.setScope('local');
+    await a.sync.syncNow();
+    await b.sync.syncNow();
+    assert.equal(await b.previews.get(bm.id), null, 'B deletes it');
+    assert.ok(await a.previews.get(bm.id), 'A keeps it on this computer');
+  });
+
+  await t.test('a large push is split by size', async () => {
+    const sizes = [];
+    const a = device(async (input, init) => {
+      if (init?.method === 'POST' && String(input).endsWith('/api/v1/sync')) sizes.push(init.body.length);
+      return fetch(input, init);
+    });
+    await login(a);
+    const [group] = (await a.store.load()).groups;
+    const { added } = await a.store.addBookmarks(group.id,
+      Array.from({ length: 30 }, (_, i) => ({ url: `https://big${i}.example/` })));
+    const big = `data:image/jpeg;base64,${'B'.repeat(390_000)}`;
+    for (const bm of added) await a.previews.save(bm.id, big, { scope: 'account' });
+    sizes.length = 0;
+    const result = await a.sync.syncNow();
+    assert.equal(result.rejected, 0);
+    assert.ok(sizes.length >= 3, `requests: ${sizes}`);
+    for (const size of sizes) assert.ok(size <= MAX_PUSH_BYTES + 500_000, `a request of ${size} bytes`);
   });
 
   await t.test('an admin account cannot sync', async () => {

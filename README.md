@@ -28,12 +28,13 @@ Example groups:
 5. [Find saved tabs](#find-saved-tabs)
 6. [Export and import](#export-and-import)
 7. [Settings](#settings)
-8. [Sync with a server](#sync-with-a-server)
-9. [Data and privacy](#data-and-privacy)
-10. [Development](#development)
-11. [Sync server](#sync-server)
-12. [Other documents](#other-documents)
-13. [License](#license)
+8. [Previews](#previews)
+9. [Sync with a server](#sync-with-a-server)
+10. [Data and privacy](#data-and-privacy)
+11. [Development](#development)
+12. [Sync server](#sync-server)
+13. [Other documents](#other-documents)
+14. [License](#license)
 
 ## Install the extension
 
@@ -212,6 +213,44 @@ Click **⚙ Settings** on the manager page.
 | Do not save pinned tabs with "all tabs in window" | On | Pinned tabs stay open. |
 | Open a saved group as a Chrome tab group | On | Opened tabs go into a Chrome tab group with the same name and colour. |
 | Remove bookmarks after "Open all" | Off | If on, **Open all** is the same as **Restore all**. |
+| Keep a picture (preview) of the visible tab when you save it | On | Refer to [Previews](#previews). |
+| Keep the previews | Only on this computer | Refer to [Previews](#previews). |
+
+## Previews
+
+When you save the tab that you can see, the extension can keep a small
+picture of the page. On the manager page, click **Preview** on a saved tab to
+see the picture before you open the page.
+
+The extension takes the picture only in these conditions:
+
+- You save with the popup, a keyboard shortcut or the right-click menu.
+  Chrome gives the extension access to the tab only for these actions.
+- The tab is the visible tab of its window. The extension does not take
+  pictures of tabs in the background.
+
+Saves from the manager page have no preview.
+
+The **Keep the previews** setting has three options:
+
+| Option | Where the previews are |
+| ------ | ---------------------- |
+| Only on this computer | In Chrome on this computer. The extension does not send them. |
+| On the sync server, for this computer only | Also on the sync server, in the space of this computer. Only this computer gets them from the server. |
+| On the sync server, for all my computers | Also on the sync server, in the shared space of your account. All your computers get them. |
+
+When you change the option, the extension moves the previews that you have.
+If a preview goes from the server to "Only on this computer", the extension
+deletes it from the server. When you delete a saved tab, the extension also
+deletes its preview.
+
+> **Note:** A preview can show private data, for example an email or an
+> account page. If you do not want pictures of pages, clear the check box
+> **Keep a picture (preview) of the visible tab**.
+
+Each Chrome profile has a random device ID. The extension makes it at the
+first start. The space of "this computer" on the server is the space of this
+ID. If you remove and install the extension again, it gets a new ID.
 
 ## Sync with a server
 
@@ -259,12 +298,19 @@ To stop the sync, click **Log out**. The stash stays on this computer.
 ## Data and privacy
 
 The extension keeps all data in Chrome on your computer
-(`chrome.storage.local`). It does not read the content of pages. It reads only
+(`chrome.storage.local`). It does not read the text of pages. It reads only
 the title and the URL of the tabs that you save.
+
+If previews are on, the extension also keeps a small picture of the visible
+tab when you save it. It keeps the previews in Chrome on your computer
+(IndexedDB). The export file does not contain the previews.
 
 If you do not connect to a sync server, the extension sends no data to a
 server. If you connect to a sync server, the extension sends your groups and
-saved tabs to that server only. You select the server. The extension uses
+saved tabs to that server only. It sends previews only if you select a server
+option for them. Refer to [Previews](#previews). The server keeps the
+previews unencrypted. A person with access to the server database or to a
+backup can see them. You select the server. The extension uses
 only HTTPS. It accepts HTTP only for a server on the same computer
 (`localhost` or `127.0.0.1`). It does not send data to other places.
 
@@ -278,6 +324,7 @@ The extension asks for these permissions:
 | `contextMenus` | To show the right-click menus. |
 | `alarms` | To remove the number from the icon after 30 seconds, and to start a sync. |
 | `idle` | To start a sync when the computer is active again. The extension does not keep or send this state. |
+| `activeTab` | To take a preview of the visible tab when you save it with the popup, a shortcut or the right-click menu. |
 | `favicon` | To show the site icons in the manager. The extension does not keep the icons. |
 | Access to the sync server (optional) | The extension asks for this permission when you connect to a server, and only for the address of that server. A server that allows the extension (CORS) works also if you do not give the permission. |
 
@@ -293,6 +340,9 @@ extension/
   lib/model.js        data model, filters, merge, import checks (no chrome.* calls)
   lib/store.js        storage layer: one key for each record
   lib/sync.js         sync with the server: login, send and get changes
+  lib/previews.js     previews of saved tabs (IndexedDB)
+  lib/thumbnail.js    makes the small picture of a preview
+  lib/device.js       the random device ID
   lib/actions.js      save, close and open tabs
   lib/ui.js           DOM helpers
   popup/              the popup
@@ -328,6 +378,10 @@ The smoke test loads the extension into Chromium and does these steps:
 4. It examines the popup.
 5. It connects the manager to a test sync server and makes sure that the
    server gets the records. This step needs Go.
+
+Then `test/smoke-capture.mjs` saves a tab and makes sure that the extension
+keeps a preview of it. This test uses a copy of the extension with access to
+all sites, because Playwright cannot give the `activeTab` permission.
 
 To keep screenshots, set `SCREENSHOTS=<folder>`.
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -16,6 +17,8 @@ const (
 	MaxURLLen   = 10000
 	MaxLabels   = 30
 	MaxLabelLen = 50
+	// MaxImageLen is the maximum length of the data URL of a preview image.
+	MaxImageLen = 400_000
 	maxGroupID  = MaxIDLen
 	timeLayout  = time.RFC3339Nano
 	fieldSeq    = "seq"
@@ -37,7 +40,10 @@ type Record struct {
 	updated   time.Time
 	// DeletedAt is the time of the logical deletion, or "" for a live record.
 	DeletedAt string
-	Data      json.RawMessage
+	// DeviceID is set for a record that only one device of the user gets
+	// (scope "device"). It is "" for a record that all devices get.
+	DeviceID string
+	Data     json.RawMessage
 }
 
 // deletedAt returns the value for the deleted_at column: NULL for a live record.
@@ -62,6 +68,65 @@ type fields struct {
 	Note      *string   `json:"note"`
 	Labels    *[]string `json:"labels"`
 	Color     *string   `json:"color"`
+	// preview records
+	BookmarkID *string `json:"bookmarkId"`
+	Image      *string `json:"image"`
+	Scope      *string `json:"scope"`
+	DevID      *string `json:"deviceId"`
+}
+
+// ValidDeviceID reports whether a device ID is acceptable: 8 to 64 letters,
+// digits and "-".
+func ValidDeviceID(id string) bool {
+	if len(id) < 8 || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+var imagePrefixes = []string{"data:image/jpeg;base64,", "data:image/webp;base64,", "data:image/png;base64,"}
+
+// checkPreview validates the fields of a preview record and returns the
+// device ID for a device record ("" for an account record).
+func checkPreview(f fields) (string, error) {
+	if f.BookmarkID == nil || *f.BookmarkID == "" || textLen(*f.BookmarkID) > MaxIDLen {
+		return "", errors.New("bookmarkId must be a string of 1 to 128 characters")
+	}
+	device := ""
+	switch {
+	case f.Scope != nil && *f.Scope == "account":
+	case f.Scope != nil && *f.Scope == "device":
+		if f.DevID == nil || !ValidDeviceID(*f.DevID) {
+			return "", errors.New("deviceId must be 8 to 64 letters, digits or \"-\"")
+		}
+		device = *f.DevID
+	default:
+		return "", errors.New(`scope must be "account" or "device"`)
+	}
+	image := ""
+	if f.Image != nil {
+		image = *f.Image
+	}
+	if len(image) > MaxImageLen {
+		return "", errors.New("image is too large")
+	}
+	if image != "" {
+		ok := false
+		for _, p := range imagePrefixes {
+			ok = ok || strings.HasPrefix(image, p)
+		}
+		if !ok {
+			return "", errors.New("image must be a JPEG, WebP or PNG data URL")
+		}
+	} else if f.DeletedAt == nil {
+		return "", errors.New("image is required")
+	}
+	return device, nil
 }
 
 func textLen(s string) int { return utf8.RuneCountInString(s) }
@@ -98,8 +163,8 @@ func ParseRecord(raw json.RawMessage) (Record, string, error) {
 	if id == "" || textLen(id) > MaxIDLen {
 		return Record{}, id, errors.New("id must be a string of 1 to 128 characters")
 	}
-	if f.Kind == nil || (*f.Kind != "group" && *f.Kind != "bookmark") {
-		return Record{}, id, errors.New(`kind must be "group" or "bookmark"`)
+	if f.Kind == nil || (*f.Kind != "group" && *f.Kind != "bookmark" && *f.Kind != "preview") {
+		return Record{}, id, errors.New(`kind must be "group", "bookmark" or "preview"`)
 	}
 	if _, err := parseTime("createdAt", f.CreatedAt, true); err != nil {
 		return Record{}, id, err
@@ -111,7 +176,7 @@ func ParseRecord(raw json.RawMessage) (Record, string, error) {
 	if _, err := parseTime("deletedAt", f.DeletedAt, false); err != nil {
 		return Record{}, id, err
 	}
-	if f.Color == nil || !Colors[*f.Color] {
+	if *f.Kind != "preview" && (f.Color == nil || !Colors[*f.Color]) {
 		return Record{}, id, errors.New("color is not valid")
 	}
 	if f.Note != nil && textLen(*f.Note) > MaxNoteLen {
@@ -128,7 +193,12 @@ func ParseRecord(raw json.RawMessage) (Record, string, error) {
 		}
 	}
 
+	device := ""
 	switch *f.Kind {
+	case "preview":
+		if device, err = checkPreview(f); err != nil {
+			return Record{}, id, err
+		}
 	case "group":
 		if f.Name == nil || *f.Name == "" || textLen(*f.Name) > MaxTitleLen {
 			return Record{}, id, errors.New("name must be a string of 1 to 500 characters")
@@ -157,7 +227,7 @@ func ParseRecord(raw json.RawMessage) (Record, string, error) {
 	if f.DeletedAt != nil {
 		deletedAt = *f.DeletedAt
 	}
-	return Record{ID: id, Kind: *f.Kind, UpdatedAt: *f.UpdatedAt, updated: updated, DeletedAt: deletedAt, Data: data}, id, nil
+	return Record{ID: id, Kind: *f.Kind, UpdatedAt: *f.UpdatedAt, updated: updated, DeletedAt: deletedAt, DeviceID: device, Data: data}, id, nil
 }
 
 // withSeq returns the stored JSON with the server "seq" field added.

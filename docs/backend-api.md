@@ -75,6 +75,40 @@ A saved tab has these fields:
 }
 ```
 
+### 4.1 Previews
+
+A preview is a small picture of a saved page. It has these fields:
+
+```json
+{
+  "id": "preview:account:4b7d2c1e-1f0a-4a55-8f3b-2a9d6c0e7f12",
+  "kind": "preview",
+  "bookmarkId": "4b7d2c1e-1f0a-4a55-8f3b-2a9d6c0e7f12",
+  "scope": "account",
+  "image": "data:image/jpeg;base64,…",
+  "createdAt": "2026-11-02T10:00:00.000Z",
+  "updatedAt": "2026-11-02T10:00:00.000Z",
+  "deletedAt": null
+}
+```
+
+- `scope` is `account` or `device`.
+  - `account`: all devices of the user get the preview.
+  - `device`: only the device with the same `deviceId` gets the preview. A
+    device record must have `deviceId` (8 to 64 letters, digits or `-`).
+- The id includes the space: `preview:account:<bookmarkId>` or
+  `preview:<deviceId>:<bookmarkId>`. When the user changes the scope, the
+  client deletes the old record (`deletedAt`) and sends a new record.
+- `image` is a JPEG, WebP or PNG data URL of 400,000 characters or less. A
+  deleted preview can have an empty `image`.
+- The extension keeps previews with the scope "local" only on the computer.
+  It does not send them.
+- The device space separates the data of the devices of one user. It is not
+  a security boundary between these devices: each device can use the same
+  login.
+- The server keeps the previews unencrypted. A person with access to the
+  database or to a backup can see them. The admin commands do not show them.
+
 Rules for records:
 
 - `color` is one of: `grey`, `blue`, `red`, `yellow`, `green`, `pink`,
@@ -132,10 +166,17 @@ The server deletes the token of the request. Response: `204`.
 
 ### 5.3 Get changes
 
-`GET /api/v1/sync?since=<seq>`
+`GET /api/v1/sync?since=<seq>&device=<deviceId>`
 
 The server sends all records with a `seq` that is more than `since`. The
 response includes deleted records. For the first sync, use `since=0`.
+
+The `device` parameter is optional:
+
+- Without `device`, the server sends only groups and bookmarks. An old client
+  (extension 0.4.0 and earlier) gets no previews.
+- With `device`, the server also sends the previews of the account, and the
+  records of this device. It does not send the records of other devices.
 
 Response `200`:
 
@@ -148,7 +189,8 @@ Response `200`:
 ```
 
 If `more` is `true`, send the request again with `since=<cursor>`. The server
-sends a maximum of 500 records in one response.
+sends a maximum of 500 records in one response. It also stops at about 4 MB of
+records, so a response with many previews stays small.
 
 ### 5.4 Send changes
 
@@ -174,7 +216,8 @@ Response `200`:
 { "accepted": 12, "ignored": 1, "rejected": [ { "id": "…", "error": "color is not valid" } ] }
 ```
 
-A maximum of 500 records can be in one request.
+A maximum of 500 records can be in one request. The request body must be 16 MiB
+or less. The extension sends a maximum of about 4 MB in one request.
 
 The response has no cursor. Other computers can send changes at the same
 time. If the client used a cursor from this response, it could miss these
@@ -285,11 +328,12 @@ that does a sync. It does one sync at a time.
    Except for **Sync now**, the extension does not do two syncs in less
    than one minute.
 6. For each sync, the extension does these steps:
-   1. It sends the records with local changes with `POST /sync`, 500 records
-      for each request, groups first. If the server rejects a record, the
-      record stays in the list of changes.
-   2. It gets the changes with `GET /sync?since=<cursor>`, until `more` is
-      `false`.
+   1. It sends the records with local changes with `POST /sync`: groups
+      first, then bookmarks, then previews. One request has a maximum of 500
+      records and about 4 MB. If the server rejects a record, the record
+      stays in the list of changes.
+   2. It gets the changes with `GET /sync?since=<cursor>&device=<id>`, until
+      `more` is `false`.
    3. It reads each record again, immediately before the write. It writes a
       server record only if the server record is newer. Thus, a change that
       the user makes during the sync stays, and the next sync sends it.
@@ -303,6 +347,27 @@ that does a sync. It does one sync at a time.
 
 Each change gets an `updatedAt` that is later than the previous one, also in
 the same millisecond. Thus, the newer change always wins.
+
+### 6.1 Device ID and previews
+
+- At the first start, the extension makes a random device ID
+  (`crypto.randomUUID()`). It keeps the ID in `chrome.storage.local`, under
+  the key `device`. The export file does not include it. A new install gets a new
+  ID.
+- The extension keeps previews in IndexedDB (database `tab-stash`), not in
+  `chrome.storage.local`. Thus, the pictures do not go to each page with
+  `storage.onChanged`. Pages get a message on the BroadcastChannel
+  `tab-stash-previews` after a change.
+- The extension sends only previews with the scope `device` or `account`.
+  It uses the same `known` map as for the other records.
+- When the user changes the **Keep the previews** setting, the extension
+  writes each preview again with the new scope. It sends a deletion for the
+  old server record.
+- When the user deletes a bookmark, the extension also deletes its preview.
+  A deletion from a different computer also deletes the preview.
+
+The server keeps the device ID of a record in the column `records.device_id`
+(schema version 4).
 
 ## 7. Security
 

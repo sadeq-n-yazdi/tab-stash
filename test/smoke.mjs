@@ -100,6 +100,61 @@ try {
   assert.equal(await manager.locator('.label-filter .chip').count(), 2);
   console.log('✔ manager lists 3 bookmarks with 2 labels');
 
+  // A save without the activeTab grant has no preview: the save still works.
+  assert.equal(await manager.locator('.preview-btn').count(), 0, 'no preview without activeTab');
+
+  // Previews: make a picture with the real thumbnail code, keep it for
+  // "Page two", and show it. (Headless Chromium cannot grant activeTab, so
+  // the screenshot itself is not tested here.)
+  const thumb = await manager.evaluate(async () => {
+    const canvas = new OffscreenCanvas(1600, 1000);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#3366cc';
+    ctx.fillRect(0, 0, 1600, 1000);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(100, 100, 600, 300);
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    const raw = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+    const { makeThumbnail } = await import('/lib/thumbnail.js');
+    const image = await makeThumbnail(raw);
+    const bitmap = await createImageBitmap(await (await fetch(image)).blob());
+    return { prefix: image.slice(0, 23), length: image.length, width: bitmap.width, height: bitmap.height };
+  });
+  assert.equal(thumb.prefix, 'data:image/jpeg;base64,');
+  assert.deepEqual([thumb.width, thumb.height], [480, 300]);
+  assert.ok(thumb.length < 60_000, `thumbnail of ${thumb.length} characters`);
+  console.log(`✔ thumbnail: ${thumb.width}x${thumb.height}, ${thumb.length} characters`);
+
+  await manager.evaluate(async () => {
+    const { createPreviews, indexedDbBackend } = await import('/lib/previews.js');
+    const { makeThumbnail } = await import('/lib/thumbnail.js');
+    const canvas = new OffscreenCanvas(800, 500);
+    canvas.getContext('2d').fillRect(0, 0, 800, 500);
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    const raw = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+    const { load } = await import('/lib/store.js').then(({ createStore }) => createStore(chrome.storage.local));
+    const { bookmarks } = await load();
+    const two = bookmarks.find((b) => b.title === 'Page two');
+    await createPreviews({ backend: indexedDbBackend() }).save(two.id, await makeThumbnail(raw), { scope: 'local' });
+  });
+  const previewBtn = manager.locator('.bookmark', { hasText: 'Page two' }).locator('.preview-btn');
+  await previewBtn.waitFor({ timeout: 5_000 });
+  await previewBtn.click();
+  await manager.locator('#preview-dialog[open]').waitFor();
+  assert.ok(await manager.locator('#preview-image').evaluate((img) => img.complete && img.naturalWidth === 480));
+  assert.match(await manager.locator('#preview-info').textContent(), /only on this computer/);
+  if (shots) await manager.screenshot({ path: join(shots, 'manager-preview.png') });
+  await manager.locator('#preview-close').click();
+  console.log('✔ the manager shows the preview of a bookmark');
+
   // Search filters the list.
   await manager.fill('#search', 'Page two');
   assert.equal(await manager.locator('.bookmark').count(), 1);
@@ -124,6 +179,20 @@ try {
   assert.deepEqual(grouped, [{ title: 'Leisure reading', color: 'purple' }]);
   await manager.locator('#empty').waitFor({ state: 'visible' });
   console.log('✔ restore reopened 3 tabs as tab group', JSON.stringify(grouped[0]));
+
+  // Restore removes the bookmarks, and the service worker removes their previews.
+  let livePreviews = -1;
+  for (let i = 0; i < 30 && livePreviews !== 0; i++) {
+    livePreviews = await manager.evaluate(async () => {
+      const { createPreviews, indexedDbBackend } = await import('/lib/previews.js');
+      return (await createPreviews({ backend: indexedDbBackend() }).bookmarkIds()).size;
+    });
+    if (livePreviews) await manager.waitForTimeout(100);
+  }
+  assert.equal(livePreviews, 0, 'the preview of a removed bookmark is removed');
+  const device = await worker.evaluate(async () => (await chrome.storage.local.get('device')).device);
+  assert.match(device?.id ?? '', /^[0-9a-f-]{36}$/);
+  console.log('✔ previews of removed bookmarks are removed; device ID', device.id);
 
   // 6. The popup page renders and lists groups.
   const popup = await context.newPage();

@@ -17,6 +17,9 @@ The automatic tests did not do these checks. Do them in your usual Chrome.
 - [ ] Save a Chrome tab group with the popup. Make sure that the new group gets
       the same name and colour.
 - [ ] Export the data on one computer and import it on a second computer.
+- [ ] Save a page with `Alt+Shift+S`, with the popup and with the right-click
+      menu. Make sure that the manager shows **Preview** for each page. (The
+      automatic test uses a copy with access to all sites, not `activeTab`.)
 
 ## 2. Sync server
 
@@ -47,6 +50,18 @@ The design is in [docs/backend-api.md](docs/backend-api.md). The server is in
 - [x] Do a sync after a change, every 15 minutes, and when the browser starts.
 - [x] Show the time of the last sync and the last sync error in the manager.
 - [x] Do not remove deleted records (`purgeDeleted`) before the server has them.
+- [x] Keep a preview (a small picture) of a saved page. Show it in the
+      manager.
+- [x] Make a random device ID at install.
+- [x] Let the user select where to keep the previews: only on the computer,
+      on the server for this computer, or on the server for all computers.
+- [ ] Show a list of the devices of an account, with a name for each device.
+- [ ] Sync settings for each device.
+- [ ] Delete the old previews of a device on the server after a new install.
+      A new install gets a new device ID, and nothing deletes the previews
+      of the old ID.
+- [ ] Take a preview also for a save from the manager page. This needs access
+      to the page (host permission).
 - [ ] Merge the two "Inbox" groups after the first sync on a second computer.
 - [ ] Write a privacy policy for the Chrome Web Store: the data goes only to
       the server that the user selects.

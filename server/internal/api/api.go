@@ -237,7 +237,12 @@ func (s *Server) getChanges(w http.ResponseWriter, r *http.Request) {
 		}
 		since = n
 	}
-	records, cursor, more, err := s.store.Changes(r.Context(), accountFrom(r.Context()).ID, since, MaxSyncRecords)
+	device := r.URL.Query().Get("device")
+	if device != "" && !store.ValidDeviceID(device) {
+		writeError(w, http.StatusBadRequest, "bad_request", "device must be 8 to 64 letters, digits or \"-\".")
+		return
+	}
+	records, cursor, more, err := s.store.Changes(r.Context(), accountFrom(r.Context()).ID, since, MaxSyncRecords, store.Filter{Device: device})
 	if err != nil {
 		s.internalError(w, r, err)
 		return

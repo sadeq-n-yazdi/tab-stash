@@ -46,7 +46,8 @@ func ValidUsername(name string) bool {
 }
 
 // schemaVersion 2 added users.role. Version 3 added records.deleted_at.
-const schemaVersion = 3
+// Version 4 added records.device_id.
+const schemaVersion = 4
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS records (
   kind       TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT,
+  device_id  TEXT,
   data       TEXT NOT NULL,
   seq        INTEGER NOT NULL,
   PRIMARY KEY (user_id, id)
@@ -161,17 +163,16 @@ func (s *Store) migrate() error {
 	if version == 1 || version == 2 {
 		// Versions 1 and 2 keep deletedAt only in the JSON data. Copy it
 		// into its own column.
-		var has int
-		if err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info('records') WHERE name = 'deleted_at'`).Scan(&has); err != nil {
+		if err := addColumn(tx, "records", "deleted_at", "TEXT"); err != nil {
 			return fmt.Errorf("migrate to version 3: %w", err)
-		}
-		if has == 0 {
-			if _, err := tx.Exec(`ALTER TABLE records ADD COLUMN deleted_at TEXT`); err != nil {
-				return fmt.Errorf("migrate to version 3: %w", err)
-			}
 		}
 		if _, err := tx.Exec(`UPDATE records SET deleted_at = json_extract(data, '$.deletedAt')`); err != nil {
 			return fmt.Errorf("migrate to version 3: %w", err)
+		}
+	}
+	if version >= 1 && version <= 3 {
+		if err := addColumn(tx, "records", "device_id", "TEXT"); err != nil {
+			return fmt.Errorf("migrate to version 4: %w", err)
 		}
 	}
 	if _, err := tx.Exec(schema); err != nil {
@@ -181,6 +182,19 @@ func (s *Store) migrate() error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// addColumn adds a column if the table does not have it yet.
+func addColumn(tx *sql.Tx, table, column, typ string) error {
+	var has int
+	if err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&has); err != nil {
+		return err
+	}
+	if has > 0 {
+		return nil
+	}
+	_, err := tx.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, typ))
+	return err
 }
 
 // ---------- users ----------
@@ -422,10 +436,10 @@ func (s *Store) PutRecords(ctx context.Context, userID int64, records []Record) 
 		}
 		seq++
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO records (user_id, id, kind, updated_at, deleted_at, data, seq) VALUES (?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO records (user_id, id, kind, updated_at, deleted_at, device_id, data, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (user_id, id) DO UPDATE SET kind = excluded.kind, updated_at = excluded.updated_at,
-			  deleted_at = excluded.deleted_at, data = excluded.data, seq = excluded.seq`,
-			userID, r.ID, r.Kind, r.UpdatedAt, r.deletedAt(), string(r.Data), seq); err != nil {
+			  deleted_at = excluded.deleted_at, device_id = excluded.device_id, data = excluded.data, seq = excluded.seq`,
+			userID, r.ID, r.Kind, r.UpdatedAt, r.deletedAt(), nullable(r.DeviceID), string(r.Data), seq); err != nil {
 			return res, err
 		}
 		res.Accepted++
@@ -445,18 +459,46 @@ func newer(r Record, stored string) bool {
 	return r.updated.After(st)
 }
 
+// MaxPageBytes is the approximate maximum size of the records in one page of
+// Changes. A page always has at least one record.
+const MaxPageBytes = 4 << 20
+
+// Filter selects the records that a client gets.
+type Filter struct {
+	// Device is the ID of the device that asks. If it is "", the client is an
+	// old client: it gets only groups and bookmarks that all devices get.
+	// Else it gets also previews, and the records of its own device.
+	Device string
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 // Changes returns up to limit records of a user with seq > since, in seq
 // order, each with its "seq" field. cursor is the seq of the last record
 // returned (or since, if there are none). more is true if there are more.
-func (s *Store) Changes(ctx context.Context, userID, since int64, limit int) (records []json.RawMessage, cursor int64, more bool, err error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT data, seq FROM records WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ?`, userID, since, limit+1)
+func (s *Store) Changes(ctx context.Context, userID, since int64, limit int, filter ...Filter) (records []json.RawMessage, cursor int64, more bool, err error) {
+	var f Filter
+	if len(filter) > 0 {
+		f = filter[0]
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT data, seq FROM records
+		WHERE user_id = ? AND seq > ?
+		  AND (device_id IS NULL OR device_id = ?)
+		  AND (? OR kind IN ('group', 'bookmark'))
+		ORDER BY seq LIMIT ?`, userID, since, f.Device, f.Device != "", limit+1)
 	if err != nil {
 		return nil, 0, false, err
 	}
 	defer rows.Close()
 	cursor = since
 	records = []json.RawMessage{}
+	size := 0
 	for rows.Next() {
 		if len(records) == limit {
 			more = true
@@ -467,6 +509,11 @@ func (s *Store) Changes(ctx context.Context, userID, since int64, limit int) (re
 		if err := rows.Scan(&data, &seq); err != nil {
 			return nil, 0, false, err
 		}
+		if len(records) > 0 && size+len(data) > MaxPageBytes {
+			more = true
+			break
+		}
+		size += len(data)
 		rec, err := withSeq([]byte(data), seq)
 		if err != nil {
 			return nil, 0, false, err

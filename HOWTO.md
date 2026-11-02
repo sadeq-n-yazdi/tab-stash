@@ -141,6 +141,8 @@ You can import the same file again. The import does not make duplicates. If a
 record is on the computer and also in the file, the import keeps the newer
 record.
 
+NOTE: The export file does not contain the previews (pictures of pages).
+
 NOTE: The export file contains the URLs, titles and notes of your saved tabs.
 Keep the file in a safe location.
 

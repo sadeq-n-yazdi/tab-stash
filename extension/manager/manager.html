@@ -81,6 +81,16 @@
       <label class="check"><input type="checkbox" name="skipPinned"> Do not save pinned tabs with "all tabs in window"</label>
       <label class="check"><input type="checkbox" name="restoreAsTabGroup"> Open a saved group as a Chrome tab group (same name and colour)</label>
       <label class="check"><input type="checkbox" name="removeOnRestore"> Remove bookmarks after "Open all" (same as "Restore all")</label>
+      <label class="check"><input type="checkbox" name="savePreviews"> Keep a picture (preview) of the visible tab when you save it</label>
+      <label class="field">Keep the previews
+        <select name="previewScope">
+          <option value="local">Only on this computer</option>
+          <option value="device">On the sync server, for this computer only</option>
+          <option value="account">On the sync server, for all my computers</option>
+        </select></label>
+      <p class="hint">A preview can show private data of the page. If you change this
+        setting, the extension moves the previews that you have. The server
+        options work only when you are logged in to a sync server.</p>
       <menu>
         <button value="cancel">Cancel</button>
         <button value="save" class="primary">Save</button>
@@ -107,6 +117,18 @@
         <button type="submit" id="sync-login" class="primary">Log in</button>
       </menu>
     </form>
+  </dialog>
+
+  <dialog id="preview-dialog">
+    <div class="dialog-form">
+      <h2 id="preview-title"></h2>
+      <img id="preview-image" class="preview-image" alt="">
+      <p id="preview-info" class="hint"></p>
+      <menu>
+        <button type="button" id="preview-close">Close</button>
+        <button type="button" id="preview-open" class="primary">Open</button>
+      </menu>
+    </div>
   </dialog>
 
   <datalist id="label-list"></datalist>

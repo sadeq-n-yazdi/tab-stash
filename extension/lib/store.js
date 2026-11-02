@@ -17,6 +17,9 @@ export const DEFAULT_SETTINGS = {
   skipPinned: true,
   restoreAsTabGroup: true,
   removeOnRestore: false,
+  // Previews: a small picture of the visible tab when it is saved.
+  savePreviews: true,
+  previewScope: 'local', // 'local', 'device' or 'account' (see lib/previews.js)
 };
 
 const TOMBSTONE_DAYS = 30;

@@ -9,9 +9,12 @@
 // never sent back, and an edit made during a sync stays dirty.
 
 import { sanitizeRecord } from './model.js';
+import { sanitizePreview, PREVIEW_KIND } from './previews.js';
 
 export const SYNC_KEY = 'sync';
 export const BATCH = 500;
+/** Maximum size of one push request. The server accepts 16 MiB. */
+export const MAX_PUSH_BYTES = 4 << 20;
 
 export const DEFAULT_SYNC = {
   serverUrl: '',
@@ -78,8 +81,10 @@ function messageFor(status, serverText) {
  * @param {object} deps.store  the store from store.js, on the same area
  * @param {Function} deps.fetch
  * @param {Function} [deps.now] returns the time as an ISO string
+ * @param {object} [deps.previews] the preview store from previews.js
+ * @param {Function} [deps.deviceId] returns the ID of this device (async)
  */
-export function createSync({ area, store, fetch, now = () => new Date().toISOString() }) {
+export function createSync({ area, store, fetch, now = () => new Date().toISOString(), previews = null, deviceId = null }) {
   async function getState() {
     const got = await area.get(SYNC_KEY);
     return { ...DEFAULT_SYNC, ...(got[SYNC_KEY] ?? {}) };
@@ -118,39 +123,82 @@ export function createSync({ area, store, fetch, now = () => new Date().toISOStr
     return data;
   }
 
-  /** Sends the dirty records. Returns { sent, rejected: [{ id, error }] }. */
+  /**
+   * Sends the dirty records: groups, then bookmarks, then previews. One
+   * request has at most BATCH records and about MAX_PUSH_BYTES.
+   * Returns { sent, rejected: [{ id, error }] }.
+   */
   async function push(state) {
     const { groups, bookmarks } = await store.load({ includeDeleted: true });
     const dirty = [...groups, ...bookmarks].filter((r) => isDirty(r, state.known));
     // Send groups first, so the server has a group before its bookmarks.
     dirty.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'group' ? -1 : 1));
+    const dirtyPreviews = previews ? (await previews.syncable()).filter((m) => isDirty(m, state.known)) : [];
+
     const rejected = [];
-    for (let i = 0; i < dirty.length; i += BATCH) {
-      const chunk = dirty.slice(i, i + BATCH);
+    let sent = 0;
+    let chunk = [];
+    let bytes = 0;
+    async function flush() {
+      if (!chunk.length) return;
+      const records = chunk;
+      chunk = [];
+      bytes = 0;
       const result = await request(state.serverUrl, '/api/v1/sync', {
-        method: 'POST', token: state.token, body: { records: chunk },
+        method: 'POST', token: state.token, body: { records },
       });
       const bad = new Set((result?.rejected ?? []).map((r) => r.id));
       rejected.push(...(result?.rejected ?? []));
       const known = { ...(await getState()).known };
-      for (const r of chunk) if (!bad.has(r.id)) known[r.id] = r.updatedAt;
+      for (const r of records) if (!bad.has(r.id)) known[r.id] = r.updatedAt;
       await setState({ known });
+      sent += records.length - bad.size;
     }
-    return { sent: dirty.length - rejected.length, rejected };
+    async function add(record) {
+      const size = JSON.stringify(record).length;
+      if (chunk.length && (chunk.length >= BATCH || bytes + size > MAX_PUSH_BYTES)) await flush();
+      chunk.push(record);
+      bytes += size;
+    }
+    for (const r of dirty) await add(r);
+    // Read the images in small groups, not all at one time.
+    for (let i = 0; i < dirtyPreviews.length; i += 20) {
+      for (const r of await previews.toServer(dirtyPreviews.slice(i, i + 20))) await add(r);
+    }
+    await flush();
+    return { sent, rejected };
   }
 
   /** Gets the changes from the server and writes the newer ones. Returns the count. */
   async function pull(state) {
     let cursor = state.cursor;
     let received = 0;
+    // With a device ID, the server also sends previews and the records of
+    // this device. An old client does not send it and gets neither.
+    const device = previews && deviceId ? await deviceId() : '';
+    const deviceParam = device ? `&device=${encodeURIComponent(device)}` : '';
     for (;;) {
-      const page = await request(state.serverUrl, `/api/v1/sync?since=${encodeURIComponent(cursor)}`, { token: state.token });
-      const incoming = (page?.records ?? []).map(sanitizeRecord).filter(Boolean);
+      const page = await request(state.serverUrl, `/api/v1/sync?since=${encodeURIComponent(cursor)}${deviceParam}`, { token: state.token });
+      const raw = page?.records ?? [];
+      const incoming = raw.filter((r) => r?.kind !== PREVIEW_KIND).map(sanitizeRecord).filter(Boolean);
+      const incomingPreviews = device
+        ? raw.filter((r) => r?.kind === PREVIEW_KIND).map((r) => sanitizePreview(r, device)).filter(Boolean)
+        : [];
       // Mark the server versions as known first. If the browser stops before
       // the records are written, the cursor is not saved and the page comes again.
       const known = { ...(await getState()).known };
       for (const r of incoming) known[r.id] = r.updatedAt;
+      for (const { meta } of incomingPreviews) known[meta.id] = meta.updatedAt;
       await setState({ known });
+      if (incomingPreviews.length) {
+        const currentMeta = await previews.getMetas(incomingPreviews.map((x) => x.meta.id));
+        const newerPreviews = incomingPreviews.filter(({ meta }) => {
+          const local = currentMeta.get(meta.id);
+          return !local || meta.updatedAt > local.updatedAt;
+        });
+        await previews.putFromServer(newerPreviews);
+        received += newerPreviews.length;
+      }
       // Compare with a fresh read, so that an edit made during the sync wins.
       const current = await store.getRecords(incoming);
       const newer = incoming.filter((r) => {
@@ -244,13 +292,18 @@ export function createSync({ area, store, fetch, now = () => new Date().toISOStr
      */
     purge: (days, at) => serialize(async () => {
       const state = await getState();
-      if (!state.serverUrl) return store.purgeDeleted(days, at);
+      if (!state.serverUrl) {
+        if (previews) await previews.purge(days, at);
+        return store.purgeDeleted(days, at);
+      }
       const removed = [];
-      const count = await store.purgeDeleted(days, at, (r) => {
+      const canRemove = (r) => {
         if (state.known[r.id] !== r.updatedAt) return false;
         removed.push(r.id);
         return true;
-      });
+      };
+      const count = await store.purgeDeleted(days, at, canRemove);
+      if (previews) await previews.purge(days, at, canRemove);
       if (removed.length) {
         const known = { ...(await getState()).known };
         for (const id of removed) delete known[id];
