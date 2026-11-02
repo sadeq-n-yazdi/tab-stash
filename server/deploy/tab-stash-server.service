@@ -1,0 +1,38 @@
+# systemd unit for tab-stash-server.
+# Install: see server/README.md, part "Run the server with systemd".
+[Unit]
+Description=Tab Stash sync server
+After=network.target
+
+[Service]
+Type=simple
+User=tab-stash
+Group=tab-stash
+WorkingDirectory=/var/lib/tab-stash
+Environment=TAB_STASH_DB=/var/lib/tab-stash/tab-stash.db
+Environment=TAB_STASH_ADDR=127.0.0.1:8080
+# The reverse proxy on the same host sets X-Forwarded-For.
+Environment=TAB_STASH_TRUST_PROXY=1
+# Add more origins with commas, for example a second extension ID.
+Environment=TAB_STASH_ALLOW_ORIGIN=chrome-extension://icppdneajfbmmpkgejjpjfegkppmneej
+ExecStart=/usr/local/bin/tab-stash-server serve
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/var/lib/tab-stash
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

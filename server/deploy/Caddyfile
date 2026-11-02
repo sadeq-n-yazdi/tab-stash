@@ -1,0 +1,6 @@
+# Caddy gets and renews the TLS certificate automatically.
+# Change the host name to the name of your server.
+tabs.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
