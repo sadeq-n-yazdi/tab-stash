@@ -169,6 +169,9 @@ The proxy must set the header with the client address on each request. The
 server uses this address for the limit of login tries. Set
 `TAB_STASH_CLIENT_IP_HEADER` to the name of this header.
 
+The proxy must also send the `Strict-Transport-Security` header. Behind a
+proxy, the server does not send it. The two example files send it.
+
 - **Caddy.** Caddy gets the certificate automatically. Use
   [deploy/Caddyfile](deploy/Caddyfile).
 - **nginx.** Get a certificate, for example with certbot. Use
