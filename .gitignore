@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.DocumentRevisions-V100
+
+# Linux
+*~
+.directory
+.Trash-*
+.nfs*
+.fuse_hidden*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node / build output
+node_modules/
+dist/
+coverage/
+*.log
+npm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.crx
+
+# Local tool state
+.remember/
+.claude/worktrees/
