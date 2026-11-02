@@ -1,8 +1,8 @@
 // Storage layer. Every record lives under its own key ("g:<id>" or "b:<id>"),
 // so two pages that write at the same time never overwrite each other's data.
 //
-// `area` is chrome.storage.local in the extension and a fake in tests. A
-// future server-sync module will read and write records through this file.
+// `area` is chrome.storage.local in the extension and a fake in tests. The
+// sync module (sync.js) reads and writes records through this file.
 
 import {
   GROUP_PREFIX, BOOKMARK_PREFIX, createGroup, createBookmark, applyChanges, markDeleted,
@@ -172,11 +172,28 @@ export function createStore(area) {
       };
     },
 
-    /** Removes tombstones older than `days`. They exist only for future sync. */
-    async purgeDeleted(days = TOMBSTONE_DAYS, now = Date.now()) {
+    /** The current local copies of these records (by id), for the sync merge. */
+    async getRecords(records) {
+      if (!records.length) return new Map();
+      const got = await area.get(records.map(storageKey));
+      return new Map(Object.values(got).map((r) => [r.id, r]));
+    },
+
+    /** Writes records exactly as given (from the sync server). */
+    async putRecords(records) {
+      await put(...records);
+    },
+
+    /**
+     * Removes deleted records older than `days`. `canRemove(record)` can keep
+     * a record, for example until the sync server has it.
+     */
+    async purgeDeleted(days = TOMBSTONE_DAYS, now = Date.now(), canRemove = () => true) {
       const { groups, bookmarks } = await readAll();
       const cutoff = new Date(now - days * 86_400_000).toISOString();
-      const keys = [...groups, ...bookmarks].filter((r) => r.deletedAt && r.deletedAt < cutoff).map(storageKey);
+      const keys = [...groups, ...bookmarks]
+        .filter((r) => r.deletedAt && r.deletedAt < cutoff && canRemove(r))
+        .map(storageKey);
       if (keys.length) await area.remove(keys);
       return keys.length;
     },

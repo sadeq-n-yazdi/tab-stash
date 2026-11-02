@@ -35,6 +35,15 @@
         <h2>Colours</h2>
         <div id="color-filter" class="color-filter"></div>
       </section>
+      <section class="sync" aria-labelledby="sync-heading">
+        <h2 id="sync-heading">Sync</h2>
+        <p id="sync-status" class="sync-status"></p>
+        <div class="sync-actions">
+          <button type="button" class="small" id="sync-connect">Connect…</button>
+          <button type="button" class="small" id="sync-now" hidden>Sync now</button>
+          <button type="button" class="small" id="sync-logout" hidden>Log out</button>
+        </div>
+      </section>
       <section class="shortcuts">
         <h2>Shortcuts</h2>
         <ul id="shortcut-list"></ul>
@@ -75,6 +84,27 @@
       <menu>
         <button value="cancel">Cancel</button>
         <button value="save" class="primary">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="sync-dialog">
+    <form method="dialog" id="sync-form" class="dialog-form">
+      <h2>Sync server</h2>
+      <p class="hint">Keep the same stash on all your computers with your own
+        <a href="https://github.com/sadeq-n-yazdi/tab-stash/blob/main/server/README.md" target="_blank" rel="noopener">Tab Stash server</a>.</p>
+      <label class="field">Server address
+        <input type="url" name="serverUrl" placeholder="https://tabs.example.com" required autocomplete="url"></label>
+      <label class="field">User name
+        <input type="text" name="username" required autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+      <label class="field">Password
+        <input type="password" name="password" required autocomplete="current-password"></label>
+      <p class="hint">The extension keeps a login token, not your password. The
+        first sync sends all your groups and saved tabs to the server.</p>
+      <p id="sync-form-error" class="status error" role="alert"></p>
+      <menu>
+        <button type="button" id="sync-cancel">Cancel</button>
+        <button type="submit" id="sync-login" class="primary">Log in</button>
       </menu>
     </form>
   </dialog>

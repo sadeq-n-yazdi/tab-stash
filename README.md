@@ -28,11 +28,12 @@ Example groups:
 5. [Find saved tabs](#find-saved-tabs)
 6. [Export and import](#export-and-import)
 7. [Settings](#settings)
-8. [Data and privacy](#data-and-privacy)
-9. [Development](#development)
-10. [Sync server](#sync-server)
-11. [Other documents](#other-documents)
-12. [License](#license)
+8. [Sync with a server](#sync-with-a-server)
+9. [Data and privacy](#data-and-privacy)
+10. [Development](#development)
+11. [Sync server](#sync-server)
+12. [Other documents](#other-documents)
+13. [License](#license)
 
 ## Install the extension
 
@@ -212,12 +213,54 @@ Click **⚙ Settings** on the manager page.
 | Open a saved group as a Chrome tab group | On | Opened tabs go into a Chrome tab group with the same name and colour. |
 | Remove bookmarks after "Open all" | Off | If on, **Open all** is the same as **Restore all**. |
 
+## Sync with a server
+
+You can use the same stash in more than one browser. For this, you need a
+Tab Stash sync server and a user account on it. Refer to
+[Sync server](#sync-server).
+
+To connect:
+
+1. Open the manager page.
+2. In the **Sync** part of the side bar, click **Connect…**.
+3. In **Server address**, type the URL of the server, for example
+   `https://tabs.example.com`.
+4. Type your user name and your password.
+5. Click **Log in**.
+6. If Chrome asks for access to the server, click **Allow**.
+
+The extension sends your groups and saved tabs to the server. Then it gets the
+groups and saved tabs from the server. The side bar shows the user name, the
+server and the time of the last sync. If a sync fails, the side bar shows the
+error.
+
+The extension does a sync at these times:
+
+- 30 seconds after a change.
+- Every 15 minutes.
+- When Chrome starts.
+- When you click **Sync now**.
+
+The extension does not keep your password. It keeps a login token. If the
+token is not valid any more, the side bar tells you to log in again.
+
+To stop the sync, click **Log out**. The stash stays on this computer.
+
+> **Note:** Each new install makes an empty "Inbox" group. Thus, after the first
+> sync on a second computer, you can see two "Inbox" groups. Move the tabs
+> into one group and delete the other group.
+
 ## Data and privacy
 
 The extension keeps all data in Chrome on your computer
-(`chrome.storage.local`). It sends no data to a server. It does not read the
-content of pages. It reads only the title and the URL of the tabs that you
-save.
+(`chrome.storage.local`). It does not read the content of pages. It reads only
+the title and the URL of the tabs that you save.
+
+If you do not connect to a sync server, the extension sends no data to a
+server. If you connect to a sync server, the extension sends your groups and
+saved tabs to that server only. You select the server. The extension uses
+only HTTPS. It accepts HTTP only for a server on the same computer
+(`localhost` or `127.0.0.1`). It does not send data to other places.
 
 The extension asks for these permissions:
 
@@ -227,8 +270,9 @@ The extension asks for these permissions:
 | `tabGroups` | To save a Chrome tab group, and to open a saved group as a Chrome tab group. |
 | `storage`, `unlimitedStorage` | To keep your groups and saved tabs. The usual limit of 10 MB is too small for a large stash. |
 | `contextMenus` | To show the right-click menus. |
-| `alarms` | To remove the number from the icon after 30 seconds. |
+| `alarms` | To remove the number from the icon after 30 seconds, and to start a sync. |
 | `favicon` | To show the site icons in the manager. The extension does not keep the icons. |
+| Access to the sync server (optional) | The extension asks for this permission when you connect to a server, and only for the address of that server. A server that allows the extension (CORS) works also if you do not give the permission. |
 
 ## Development
 
@@ -241,6 +285,7 @@ extension/
   background.js       service worker: shortcuts, right-click menus, saves
   lib/model.js        data model, filters, merge, import checks (no chrome.* calls)
   lib/store.js        storage layer: one key for each record
+  lib/sync.js         sync with the server: login, send and get changes
   lib/actions.js      save, close and open tabs
   lib/ui.js           DOM helpers
   popup/              the popup
@@ -257,6 +302,9 @@ To run the unit tests:
 npm test
 ```
 
+Some tests build the Go server in `server/` and sync with it. These tests
+need Go. If Go is not installed, the tests are skipped.
+
 To run the smoke test in a real browser:
 
 ```sh
@@ -271,6 +319,8 @@ The smoke test loads the extension into Chromium and does these steps:
 2. It examines the manager page.
 3. It opens the tabs again as a Chrome tab group.
 4. It examines the popup.
+5. It connects the manager to a test sync server and makes sure that the
+   server gets the records. This step needs Go.
 
 To keep screenshots, set `SCREENSHOTS=<folder>`.
 
@@ -339,7 +389,8 @@ Each record has these fields for sync:
 
 When you delete a record, the extension keeps it with a `deletedAt` time for
 30 days. A sync server can then send the deletion to other computers. After 30
-days, the extension removes the record.
+days, the extension removes the record. If you use a sync server, the
+extension removes a deleted record only after the server has the deletion.
 
 ## Sync server
 
@@ -349,8 +400,8 @@ the same stash in other browsers and on other computers.
 
 - The server has user accounts and admin accounts. An admin adds the user
   accounts, but cannot read the groups and the bookmarks of the users.
-- The server is ready. The extension does not use it yet. Refer to
-  [TODO.md](TODO.md).
+- To connect the extension to the server, refer to
+  [Sync with a server](#sync-with-a-server).
 
 To build and install the server, read [server/README.md](server/README.md).
 The API is in [docs/backend-api.md](docs/backend-api.md).

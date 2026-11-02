@@ -3,9 +3,15 @@
 
 import { createStore } from './lib/store.js';
 import { collectTabs, saveTabs, focusedWindowId } from './lib/actions.js';
-import { GROUP_PREFIX } from './lib/model.js';
+import { GROUP_PREFIX, BOOKMARK_PREFIX } from './lib/model.js';
+import { createSync } from './lib/sync.js';
 
 const store = createStore(chrome.storage.local);
+const sync = createSync({ area: chrome.storage.local, store, fetch: (...args) => fetch(...args) });
+const SYNC_SOON = 'sync-soon';
+const SYNC_PERIODIC = 'sync-periodic';
+const SYNC_DELAY_MINUTES = 0.5; // the shortest delay that chrome.alarms permits
+const SYNC_PERIOD_MINUTES = 15;
 const MANAGER_URL = chrome.runtime.getURL('manager/manager.html');
 const BADGE_ALARM = 'clear-badge';
 const MENU_PAGE = 'save-page';
@@ -17,20 +23,58 @@ const MENU_MANAGER = 'open-manager';
 chrome.runtime.onInstalled.addListener(async () => {
   await store.ensureDefaultGroup();
   await rebuildMenus();
-  await store.purgeDeleted();
+  await sync.purge();
+  await startSyncTimer();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await rebuildMenus();
-  await store.purgeDeleted();
+  await runSync('startup');
+  await sync.purge();
+  await startSyncTimer();
 });
 
-// Group names in the context menu must follow changes made on any page.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && Object.keys(changes).some((k) => k.startsWith(GROUP_PREFIX) || k === 'settings')) {
-    rebuildMenus();
-  }
+  if (area !== 'local') return;
+  // Group names in the context menu must follow changes made on any page.
+  if (Object.keys(changes).some((k) => k.startsWith(GROUP_PREFIX) || k === 'settings')) rebuildMenus();
+  scheduleSync(changes);
 });
+
+// ---------- sync ----------
+
+async function runSync(reason) {
+  try {
+    await sync.syncNow();
+  } catch (error) {
+    // The sync state keeps the error, and the manager shows it.
+    console.warn(`[Tab Stash] sync (${reason}) failed:`, error?.message ?? error);
+  }
+}
+
+async function startSyncTimer() {
+  const { token } = await sync.getState();
+  if (!token) return chrome.alarms.clear(SYNC_PERIODIC);
+  if (!(await chrome.alarms.get(SYNC_PERIODIC))) {
+    await chrome.alarms.create(SYNC_PERIODIC, { periodInMinutes: SYNC_PERIOD_MINUTES });
+  }
+}
+
+/** Starts a sync soon after a local change. Writes of the sync itself do not count. */
+async function scheduleSync(changes) {
+  const records = Object.entries(changes)
+    .filter(([k, c]) => (k.startsWith(GROUP_PREFIX) || k.startsWith(BOOKMARK_PREFIX)) && c.newValue)
+    .map(([, c]) => c.newValue);
+  if (!records.length) return;
+  for (const record of records) {
+    if (await sync.needsSync(record)) {
+      // A new alarm with the same name replaces the old one: many quick
+      // changes give one sync.
+      await chrome.alarms.create(SYNC_SOON, { delayInMinutes: SYNC_DELAY_MINUTES });
+      return;
+    }
+  }
+}
 
 // ---------- feedback ----------
 
@@ -56,6 +100,7 @@ async function reportError(error) {
 }
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === SYNC_SOON || alarm.name === SYNC_PERIODIC) return runSync(alarm.name);
   if (alarm.name !== BADGE_ALARM) return;
   await chrome.action.setBadgeText({ text: '' });
   await chrome.action.setTitle({ title: 'Tab Stash' });
@@ -155,8 +200,39 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // ---------- messages from the popup and the manager ----------
 
+async function handleSyncMessage(message) {
+  if (message.type === 'sync-login') {
+    const platform = navigator.userAgentData?.platform || 'Chrome';
+    await sync.login({
+      serverUrl: message.serverUrl,
+      username: message.username,
+      password: message.password,
+      client: `Tab Stash on ${platform}`,
+    });
+  } else if (message.type === 'sync-logout') {
+    await sync.logout();
+    await chrome.alarms.clear(SYNC_SOON);
+  } else if (message.type === 'sync-now') {
+    await sync.syncNow();
+  } else {
+    throw new Error(`Unknown message: ${message.type}`);
+  }
+  await startSyncTimer();
+  const { token, ...rest } = await sync.getState();
+  return { ...rest, known: undefined, signedIn: Boolean(token) };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
+    if (String(message?.type).startsWith('sync-')) {
+      // Sync errors go to the manager only. They do not flash the icon.
+      try {
+        sendResponse({ ok: true, result: await handleSyncMessage(message) });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error?.message ?? error) });
+      }
+      return;
+    }
     try {
       if (message?.type === 'save') return sendResponse({ ok: true, result: await save(message) });
       if (message?.type === 'open-manager') return sendResponse({ ok: true, result: await openManager() });

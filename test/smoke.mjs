@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { hasGo, startGoServer, TEST_PASSWORD } from './go-server.mjs';
 
 const extDir = fileURLToPath(new URL('../extension', import.meta.url));
 const shots = process.env.SCREENSHOTS;
@@ -137,6 +138,40 @@ try {
   assert.ok(await popup.locator('#page-info').isHidden());
   if (shots) await popup.screenshot({ path: join(shots, 'popup.png') });
   console.log('✔ popup renders with groups');
+
+  // 7. Connect to a sync server from the manager (needs Go to build it).
+  if (hasGo) {
+    const sync = await startGoServer({ users: ['alice'] });
+    try {
+      await manager.bringToFront();
+      // Headless Chromium shows the host permission prompt and nobody can
+      // answer it. Answer "deny": login must work without it, through CORS.
+      await manager.evaluate(() => { chrome.permissions.request = async () => false; });
+      await manager.locator('#sync-connect').click();
+      await manager.locator('#sync-form [name="serverUrl"]').fill(sync.url);
+      await manager.locator('#sync-form [name="username"]').fill('alice');
+      await manager.locator('#sync-form [name="password"]').fill(TEST_PASSWORD);
+      await manager.locator('#sync-login').click();
+      await manager.locator('#sync-status', { hasText: 'Logged in as' }).waitFor({ timeout: 15_000 });
+      assert.ok(await manager.locator('#sync-dialog').evaluate((d) => !d.open), 'the dialog closes');
+      const login = await fetch(`${sync.url}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: TEST_PASSWORD, client: 'smoke' }),
+      }).then((r) => r.json());
+      const pulled = await fetch(`${sync.url}/api/v1/sync?since=0`, {
+        headers: { authorization: `Bearer ${login.token}` },
+      }).then((r) => r.json());
+      const names = pulled.records.filter((r) => r.kind === 'group' && !r.deletedAt).map((r) => r.name).sort();
+      assert.ok(names.includes('Leisure reading'), `server has the groups: ${JSON.stringify(names)}`);
+      if (shots) await manager.screenshot({ path: join(shots, 'manager-sync.png') });
+      console.log(`✔ sync connected from the manager; server has ${pulled.records.length} records`);
+    } finally {
+      sync.stop();
+    }
+  } else {
+    console.log('- sync step skipped: Go is not installed');
+  }
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('\nSMOKE TEST PASSED');

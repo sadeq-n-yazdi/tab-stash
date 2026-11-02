@@ -114,6 +114,17 @@ const EDITABLE = {
   bookmark: ['groupId', 'title', 'url', 'note', 'labels', 'color'],
 };
 
+/**
+ * The updatedAt for a change of a record. It is always later than the old
+ * updatedAt, also when two changes occur in the same millisecond. Sync and
+ * import keep the newer record, so a change must never get an equal time.
+ */
+export function nextUpdatedAt(previous, now = nowIso()) {
+  if (!previous || now > previous) return now;
+  const prev = Date.parse(previous);
+  return Number.isNaN(prev) ? now : new Date(prev + 1).toISOString();
+}
+
 /** Returns a new record with the allowed fields changed and updatedAt set. */
 export function applyChanges(record, changes, now = nowIso()) {
   const next = { ...record };
@@ -130,12 +141,12 @@ export function applyChanges(record, changes, now = nowIso()) {
     if (!next.url) throw new Error('A bookmark must have a URL.');
     if (!next.title) next.title = next.url;
   }
-  next.updatedAt = now;
+  next.updatedAt = nextUpdatedAt(record.updatedAt, now);
   return next;
 }
 
 export function markDeleted(record, now = nowIso()) {
-  return { ...record, deletedAt: now, updatedAt: now };
+  return { ...record, deletedAt: now, updatedAt: nextUpdatedAt(record.updatedAt, now) };
 }
 
 export function storageKey(record) {

@@ -3,7 +3,18 @@ import assert from 'node:assert/strict';
 import {
   normalizeLabels, createGroup, createBookmark, applyChanges, markDeleted, filterBookmarks,
   collectLabels, mergeRecords, parseImport, buildExport, isSaveableUrl, isRestrictedUrl, normalizeColor,
+  nextUpdatedAt,
 } from '../extension/lib/model.js';
+
+test('a change always gets a later updatedAt, also in the same millisecond', () => {
+  const t = '2026-03-01T10:00:00.000Z';
+  assert.equal(nextUpdatedAt(t, '2026-03-01T10:00:00.005Z'), '2026-03-01T10:00:00.005Z');
+  assert.equal(nextUpdatedAt(t, t), '2026-03-01T10:00:00.001Z');
+  assert.equal(nextUpdatedAt(t, '2026-02-01T00:00:00.000Z'), '2026-03-01T10:00:00.001Z', 'a clock that went back');
+  const g = createGroup({ name: 'G' }, t);
+  assert.ok(applyChanges(g, { name: 'H' }, t).updatedAt > t);
+  assert.ok(markDeleted(g, t).updatedAt > t);
+});
 
 test('normalizeLabels trims, removes empties and case-insensitive duplicates', () => {
   assert.deepEqual(normalizeLabels(' Rust , rust, ,deep   dive,AI'), ['Rust', 'deep dive', 'AI']);

@@ -38,15 +38,18 @@ The design is in [docs/backend-api.md](docs/backend-api.md). The server is in
 
 ## 3. Sync in the extension
 
-- [ ] Add a "Server" part to the settings: server URL, user name and password.
+- [x] Add a "Sync" part to the manager: server URL, user name and password.
       Keep the server URL in the settings of the extension, not in the code.
-- [ ] Ask for permission to the server URL at runtime
+- [x] Ask for permission to the server URL at runtime
       (`optional_host_permissions`).
-- [ ] Keep the token, the cursor and the list of changed records in
+- [x] Keep the token, the cursor and the versions that the server has in
       `chrome.storage.local`.
-- [ ] Do a sync after a change, every 15 minutes, and when the browser starts.
-- [ ] Show the time of the last sync and the last sync error in the manager.
-- [ ] Do not remove deleted records (`purgeDeleted`) before the server has them.
+- [x] Do a sync after a change, every 15 minutes, and when the browser starts.
+- [x] Show the time of the last sync and the last sync error in the manager.
+- [x] Do not remove deleted records (`purgeDeleted`) before the server has them.
+- [ ] Merge the two "Inbox" groups after the first sync on a second computer.
+- [ ] Write a privacy policy for the Chrome Web Store: the data goes only to
+      the server that the user selects.
 
 ## 4. Improvements to the extension
 

@@ -240,28 +240,49 @@ known, the server shows `unknown`.
 
 ## 6. Sync in the extension
 
-These changes to the extension are necessary:
+The code is in `extension/lib/sync.js`. The service worker is the only part
+that does a sync. It does one sync at a time.
 
-1. Add a "Server" part to the settings: the server URL, the user name and the password.
-2. Ask for permission to the server URL at runtime. Use `optional_host_permissions`.
-   Thus, the extension does not ask for access to all sites.
-3. After the login, keep the token in `chrome.storage.local`. Do not keep the password.
-4. Keep these values in `chrome.storage.local`:
-   - `sync.cursor`: the last `cursor` from the server.
-   - `sync.pending`: the IDs of the records that changed after the last sync.
-5. Do a sync at these times:
-   - 10 seconds after a change, with `chrome.alarms`.
+1. The **Sync** part of the manager side bar has the login form. The form has
+   the server URL, the user name and the password. The server URL is a
+   setting. It is not in the code.
+2. Before the login, the manager asks for permission to the server URL
+   (`optional_host_permissions`). Thus, the extension does not ask for access
+   to all sites. If the user does not give the permission, the login
+   continues. A server that allows the extension with CORS works without it.
+3. After the login, the extension keeps the token in `chrome.storage.local`.
+   It does not keep the password.
+4. The extension keeps these values in `chrome.storage.local`, under the key
+   `sync`:
+   - `cursor`: the last `cursor` from the server.
+   - `known`: for each record ID, the `updatedAt` that the server has.
+     A record has local changes if its `updatedAt` is not the same.
+   - `lastSyncAt`, `lastError` and `lastResult`, for the manager.
+5. The extension does a sync at these times:
+   - 30 seconds after a change, with `chrome.alarms`. (30 seconds is the
+     minimum time of `chrome.alarms`.)
    - Every 15 minutes, with `chrome.alarms`.
    - When the browser starts.
-6. For each sync, do these steps:
-   1. Send the changed records with `POST /sync`.
-   2. Get the changes with `GET /sync?since=<cursor>`.
-   3. Merge the changes with `mergeRecords` in `extension/lib/model.js`. Write them with the store.
-   4. Keep the new cursor. Clear `sync.pending`.
-7. Do not remove deleted records (`purgeDeleted`) before the server has them.
+   - When the user clicks **Sync now**.
+6. For each sync, the extension does these steps:
+   1. It sends the records with local changes with `POST /sync`, 500 records
+      for each request, groups first. If the server rejects a record, the
+      record stays in the list of changes.
+   2. It gets the changes with `GET /sync?since=<cursor>`, until `more` is
+      `false`.
+   3. It reads each record again, immediately before the write. It writes a
+      server record only if the server record is newer. Thus, a change that
+      the user makes during the sync stays, and the next sync sends it.
+   4. It writes `known`, then the records, then the new cursor.
+7. The extension removes a deleted record (`purgeDeleted`) only after the
+   server has the deletion. Then `known` has the `updatedAt` of the deletion.
+8. If the server sends 401 or 403, the extension removes the token. The user
+   must log in again.
+9. A login to a different server or a different user starts again with cursor
+   0 and an empty `known`. Thus, the first sync sends all records.
 
-The store already writes each record under its own key and sets `updatedAt`
-on each change. The store needs no other change for sync.
+Each change gets an `updatedAt` that is later than the previous one, also in
+the same millisecond. Thus, the newer change always wins.
 
 ## 7. Security
 

@@ -1,6 +1,7 @@
 import { createStore } from '../lib/store.js';
 import { COLORS, COLOR_HEX, collectLabels, filterBookmarks, parseImport, isRestrictedUrl } from '../lib/model.js';
 import { openBookmarks } from '../lib/actions.js';
+import { SYNC_KEY, DEFAULT_SYNC, normalizeServerUrl, originPattern } from '../lib/sync.js';
 import {
   h, faviconUrl, colorDot, colorPicker, pickedColor, labelChips, attachLabelSuggestions, formatDate, hostOf,
 } from '../lib/ui.js';
@@ -15,6 +16,7 @@ const state = {
   groupsById: new Map(),
   filter: { text: '', labels: [], colors: [], groupId: '' },
   selected: new Set(),
+  sync: { ...DEFAULT_SYNC },
 };
 
 // ---------- helpers ----------
@@ -255,6 +257,108 @@ async function reload() {
     writeHash();
   }
   render();
+  await renderSync();
+}
+
+// ---------- sync ----------
+
+async function renderSync() {
+  const got = await chrome.storage.local.get(SYNC_KEY);
+  const sync = { ...DEFAULT_SYNC, ...(got[SYNC_KEY] ?? {}) };
+  state.sync = sync;
+  const signedIn = Boolean(sync.token);
+  const parts = [];
+  if (signedIn) {
+    parts.push('Logged in as ', h('strong', {}, sync.username), ' on ', h('strong', {}, hostOf(sync.serverUrl)), '. ',
+      sync.lastSyncAt ? `Last sync: ${formatDate(sync.lastSyncAt)}.` : 'Not synced yet.');
+  } else if (sync.serverUrl) {
+    parts.push(`Logged out of ${hostOf(sync.serverUrl)}. The stash is only on this computer.`);
+  } else {
+    parts.push('Not connected. The stash is only on this computer.');
+  }
+  if (sync.lastError) parts.push(h('span', { class: 'error' }, sync.lastError));
+  $('sync-status').replaceChildren(...parts);
+  $('sync-connect').hidden = signedIn;
+  $('sync-connect').textContent = sync.serverUrl ? 'Log in…' : 'Connect…';
+  $('sync-now').hidden = !signedIn;
+  $('sync-logout').hidden = !signedIn;
+}
+
+function syncSummary(result) {
+  return `Synced: sent ${result.lastResult?.sent ?? 0}, received ${result.lastResult?.received ?? 0}.`;
+}
+
+async function sendSync(message) {
+  const response = await chrome.runtime.sendMessage(message);
+  if (!response?.ok) throw new Error(response?.error ?? 'The sync failed.');
+  return response.result;
+}
+
+function openSyncDialog() {
+  const form = $('sync-form');
+  form.elements.serverUrl.value = state.sync.serverUrl;
+  form.elements.username.value = state.sync.username;
+  form.elements.password.value = '';
+  $('sync-form-error').textContent = '';
+  $('sync-login').disabled = false;
+  $('sync-dialog').showModal();
+  (state.sync.serverUrl ? form.elements.password : form.elements.serverUrl).focus();
+}
+
+function syncLogin(event) {
+  event.preventDefault();
+  const form = $('sync-form');
+  const error = $('sync-form-error');
+  let serverUrl;
+  try {
+    serverUrl = normalizeServerUrl(form.elements.serverUrl.value);
+  } catch (e) {
+    error.textContent = e.message;
+    return;
+  }
+  if (!form.reportValidity()) return;
+  // Ask for access to the server now: Chrome permits the request only during
+  // a click or a key press. The server also allows this extension with CORS,
+  // so the login can work when the user refuses.
+  const asked = chrome.permissions.request({ origins: [originPattern(serverUrl)] }).catch(() => false);
+  const button = $('sync-login');
+  button.disabled = true;
+  error.textContent = 'Logging in and syncing…';
+  (async () => {
+    try {
+      await asked;
+      const result = await sendSync({
+        type: 'sync-login',
+        serverUrl,
+        username: form.elements.username.value,
+        password: form.elements.password.value,
+      });
+      form.elements.password.value = '';
+      $('sync-dialog').close();
+      setStatus(syncSummary(result), 'ok');
+    } catch (e) {
+      error.textContent = e.message;
+    } finally {
+      button.disabled = false;
+      await renderSync();
+    }
+  })();
+}
+
+async function syncNow() {
+  $('sync-now').disabled = true;
+  setStatus('Syncing…');
+  try {
+    setStatus(syncSummary(await sendSync({ type: 'sync-now' })), 'ok');
+  } finally {
+    $('sync-now').disabled = false;
+  }
+}
+
+async function syncLogout() {
+  if (!(await confirmDialog('Log out of the sync server? The stash stays on this computer.', 'Log out'))) return;
+  await sendSync({ type: 'sync-logout' });
+  setStatus('Logged out of the sync server.', 'ok');
 }
 
 async function renderShortcuts() {
@@ -463,6 +567,11 @@ $('import-file').addEventListener('change', (e) => {
   e.target.value = '';
 });
 $('settings-btn').addEventListener('click', openSettings);
+$('sync-connect').addEventListener('click', openSyncDialog);
+$('sync-form').addEventListener('submit', syncLogin);
+$('sync-cancel').addEventListener('click', () => $('sync-dialog').close());
+$('sync-now').addEventListener('click', () => guard(syncNow));
+$('sync-logout').addEventListener('click', () => guard(syncLogout));
 $('edit-shortcuts').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }));
 
 document.addEventListener('keydown', (e) => {

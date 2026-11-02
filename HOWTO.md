@@ -111,8 +111,14 @@ Do the procedure in [Shortcuts show "not set"](#shortcuts-show-not-set).
 
 ## 5. Move your saved tabs to a different computer
 
-The extension keeps the saved tabs only in the Chrome profile on one computer.
-Chrome does not sync them. Use export and import to move them.
+The extension keeps the saved tabs in the Chrome profile on one computer.
+Chrome does not sync them. You can move them in two ways:
+
+- If you have a Tab Stash sync server, connect the extension on each computer
+  to the same account. Refer to
+  [Sync with a server](README.md#sync-with-a-server) in README.md.
+- If you do not have a sync server, use export and import. Do the procedures
+  that follow.
 
 On the old computer:
 
@@ -209,6 +215,17 @@ more data, do these steps:
 1. Go to `chrome://extensions`.
 2. On the **Tab Stash** card, click **service worker**.
 3. Read the messages in the **Console** tab.
+
+### The Sync part of the manager shows an error
+
+Do the step for the error:
+
+| Error | Step |
+| ----- | ---- |
+| "The user name or the password is not correct." | Make sure that the user name and the password are correct. Ask the admin of the server to set a new password if necessary. |
+| "The login is not valid any more. Log in again." | Click **Connect…** and log in again. |
+| "This account cannot sync." | Log in with a user account. An admin account cannot keep a stash. |
+| "Cannot connect to the server." | Make sure that the server URL is correct and that the server operates. Open `<server URL>/healthz` in a tab. The page must show `"status":"ok"`. |
 
 ### A saved tab does not open
 
