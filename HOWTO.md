@@ -35,7 +35,7 @@ extension. The author did not test them.
 
 ## 2. Get the files
 
-Use one of the two procedures that follow.
+Use one of the three procedures that follow.
 
 ### 2.1 With Git
 
@@ -62,6 +62,16 @@ The extension is in the `tab-stash/extension` folder.
 4. Extract the ZIP file into a folder where you want to keep the extension.
 
 The extension is in the `extension` folder of the extracted files.
+
+### 2.3 From a release
+
+1. Go to <https://github.com/sadeq-n-yazdi/tab-stash/releases>.
+2. Find the newest release with a name that starts with "Extension".
+3. Download the file `tab-stash-extension-<version>.zip`.
+4. Extract the ZIP file into a new, empty folder where you want to keep the
+   extension.
+
+The extension is in this folder. The folder contains `manifest.json`.
 
 CAUTION: KEEP THE FILES IN THIS FOLDER AFTER THE INSTALLATION. CHROME LOADS THE
 EXTENSION FROM THIS FOLDER EACH TIME THAT IT STARTS. IF YOU DELETE THE FOLDER,

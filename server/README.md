@@ -10,7 +10,7 @@ The API is in [../docs/backend-api.md](../docs/backend-api.md).
 
 1. [What the server does](#what-the-server-does)
 2. [Accounts and roles](#accounts-and-roles)
-3. [Build the server](#build-the-server)
+3. [Get the server](#get-the-server)
 4. [Settings](#settings)
 5. [Install on a Linux server](#install-on-a-linux-server)
 6. [Put a reverse proxy in front of the server](#put-a-reverse-proxy-in-front-of-the-server)
@@ -52,16 +52,44 @@ password of the user, and cannot log in as the user.
 The roles do not limit a person with root access to the server. They also do not
 limit a person with a copy of the database file and the settings file.
 
-## Build the server
+## Get the server
+
+### Download a release
+
+Go to the
+[releases page](https://github.com/sadeq-n-yazdi/tab-stash/releases). Find the
+newest release with a name that starts with "Server". Download the archive for
+your system, for example `tab-stash-server-0.2.0-linux-amd64.tar.gz`, and the
+file `SHA256SUMS`.
+
+Make sure that the archive is correct, then extract it:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf tab-stash-server-0.2.0-linux-amd64.tar.gz
+```
+
+The archive contains the binary, this guide, the licence and the `deploy`
+folder.
+
+### Build the server
 
 You need Go 1.27 or later.
 
 ```sh
 cd server
 go test ./...
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=0.1.0" \
+CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w -X main.version=0.1.0 -X main.commit=$(git rev-parse HEAD)" \
   -o bin/tab-stash-server ./cmd/tab-stash-server
 ```
+
+If you do not set `main.commit`, the binary gets the commit from the git
+checkout. If the files have changes that are not committed, the commit ends
+with `-dirty`.
+
+To build the release archives for all systems, use
+`scripts/build-release.sh <version>`. The script writes them to `dist/`.
 
 To build for a different system, set `GOOS` and `GOARCH`. For example, for a
 64-bit ARM server:
@@ -148,7 +176,8 @@ This procedure uses systemd. Do the steps as root on the server.
    curl http://127.0.0.1:8080/healthz
    ```
 
-   The answer is `{"status":"ok"}`.
+   The answer is `{"status":"ok","version":"0.2.0","commit":"…"}`. The
+   version and the commit identify the binary.
 
 8. Add the first admin account. The command asks for the password two times:
 
@@ -238,10 +267,12 @@ To restore a backup, do these steps:
 
 ## Update the server
 
-1. Build the new binary.
+1. Download the new release, or build the new binary.
 2. Copy it to the server, then install it with
    `install -m 0755 tab-stash-server /usr/local/bin/tab-stash-server`.
 3. Restart the server: `systemctl restart tab-stash-server`.
+4. Make sure that `curl http://127.0.0.1:8080/healthz` shows the new version
+   and commit.
 
 The server updates the database format when it starts. Make a backup before
 an update.
@@ -258,7 +289,7 @@ an update.
 | `user tokens <name>` | List the logins of an account. |
 | `backup <new-file>` | Copy the database to a new file. |
 | `gen-salt` | Show a new secret salt: 64 random characters from `[a-zA-Z.-]`. |
-| `version` | Show the version. |
+| `version` | Show the version and the git commit. |
 
 All commands accept `-config <file>`.
 

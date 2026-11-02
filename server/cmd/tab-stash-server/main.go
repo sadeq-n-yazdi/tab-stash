@@ -12,7 +12,7 @@
 //	tab-stash-server user list               list users
 //	tab-stash-server user tokens <name>      list the active logins of a user
 //	tab-stash-server gen-salt                make a secret salt for the settings file
-//	tab-stash-server version                 show the version
+//	tab-stash-server version                 show the version and the git commit
 package main
 
 import (
@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -38,8 +39,43 @@ import (
 	"github.com/sadeq-n-yazdi/tab-stash/server/internal/store"
 )
 
-// version is set at build time: -ldflags "-X main.version=1.2.3".
-var version = "dev"
+// version and commit are set at build time:
+//
+//	-ldflags "-X main.version=1.2.3 -X main.commit=<git commit>"
+//
+// Without main.commit, the commit comes from the build information that
+// "go build" adds in a git checkout.
+var (
+	version = "dev"
+	commit  = ""
+)
+
+// buildCommit returns the git commit of the binary, or "unknown".
+func buildCommit() string {
+	if commit != "" {
+		return commit
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	rev, dirty := "", false
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return "unknown"
+	}
+	if dirty {
+		rev += "-dirty"
+	}
+	return rev
+}
 
 const (
 	defaultDB     = "tab-stash.db"
@@ -166,7 +202,7 @@ func run(args []string) error {
 		fmt.Println(salt)
 		return nil
 	case "version", "--version", "-v":
-		fmt.Println(version)
+		fmt.Printf("tab-stash-server %s (commit %s)\n", version, buildCommit())
 		return nil
 	case "help", "-h", "--help":
 		usage()
@@ -223,6 +259,8 @@ func serve(args []string) error {
 		TokenTTL:       time.Duration(*tokenDays) * 24 * time.Hour,
 		ClientIPHeader: *ipHeader,
 		PublicURL:      *publicURL,
+		Version:        version,
+		Commit:         buildCommit(),
 		Logger:         logger,
 	})
 	srv := &http.Server{
@@ -240,7 +278,7 @@ func serve(args []string) error {
 
 	errc := make(chan error, 1)
 	go func() {
-		logger.Info("tab-stash-server started", "version", version, "addr", *addr, "db", *dbPath, "tls", *tlsCert != "", "public_url", *publicURL)
+		logger.Info("tab-stash-server started", "version", version, "commit", buildCommit(), "addr", *addr, "db", *dbPath, "tls", *tlsCert != "", "public_url", *publicURL)
 		if *tlsCert != "" {
 			errc <- srv.ListenAndServeTLS(*tlsCert, *tlsKey)
 		} else {

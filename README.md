@@ -286,6 +286,44 @@ npm run icons
 After you change the code, go to `chrome://extensions` and click the reload
 icon on the Tab Stash card.
 
+### Make a release
+
+Two workflows of GitHub Actions test each push and each pull request. A tag
+starts a release:
+
+| Tag | Workflow | Release files |
+| --- | -------- | ------------- |
+| `extension-v<version>`, for example `extension-v0.2.0` | [extension.yml](.github/workflows/extension.yml) | `tab-stash-extension-<version>.zip` and its SHA-256 file |
+| `server-v<version>`, for example `server-v0.2.0` | [server.yml](.github/workflows/server.yml) | One archive for each system (Linux, macOS and Windows) and `SHA256SUMS` |
+
+To release the extension, do these steps:
+
+1. Set the same version in `extension/manifest.json` and `package.json`.
+2. Commit the change and push it to `main`.
+3. Push the tag:
+
+   ```sh
+   git tag extension-v0.2.0
+   git push origin extension-v0.2.0
+   ```
+
+The workflow stops if the tag and the version in the files are different.
+The `manifest.json` in the ZIP file also has `version_name`, for example
+`0.2.0 (fdf0c79)`. Chrome shows it on `chrome://extensions`.
+
+To release the server, push a tag. The version is in the tag only:
+
+```sh
+git tag server-v0.2.0
+git push origin server-v0.2.0
+```
+
+The binaries contain the version and the git commit.
+`tab-stash-server version` and `GET /healthz` show them.
+
+To make the same files on your computer, use
+`scripts/package-extension.sh` and `server/scripts/build-release.sh`.
+
 ### Data model
 
 Each group and each saved tab is one record. The extension keeps each record

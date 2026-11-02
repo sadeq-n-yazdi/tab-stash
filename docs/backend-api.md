@@ -224,6 +224,20 @@ account that exists, because the admin could then log in as the user.
   server to add or delete an admin account.
 - An account with the role `user` gets `403` on these paths.
 
+### 5.8 Health and version
+
+`GET /healthz` needs no token.
+
+Response `200`:
+
+```json
+{ "status": "ok", "version": "0.2.0", "commit": "<git commit>" }
+```
+
+`version` is the version of the release. `commit` is the git commit of the
+binary. A development build shows the version `dev`. If the commit is not
+known, the server shows `unknown`.
+
 ## 6. Sync in the extension
 
 These changes to the extension are necessary:

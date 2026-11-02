@@ -1,0 +1,59 @@
+# Tests the extension on each push and pull request.
+# A tag "extension-v<version>" (for example extension-v0.1.0) also makes a
+# GitHub release with the packaged extension. The tag must match the version
+# in extension/manifest.json and package.json.
+name: Extension
+
+on:
+  push:
+    branches: [main]
+    tags: ["extension-v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Unit tests
+        run: npm test
+      - name: Package
+        run: scripts/package-extension.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tab-stash-extension
+          path: dist/tab-stash-extension-*.zip
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/extension-v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Package
+        run: scripts/package-extension.sh "${GITHUB_REF_NAME#extension-v}" "$GITHUB_SHA"
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#extension-v}"
+          gh release create "$GITHUB_REF_NAME" dist/tab-stash-extension-* \
+            --verify-tag \
+            --title "Extension $version" \
+            --notes "Tab Stash extension $version, commit $GITHUB_SHA.
+
+          To install, extract the ZIP file into a folder that you keep, then load the folder with **Load unpacked** on chrome://extensions. Read HOWTO.md for the full procedure."

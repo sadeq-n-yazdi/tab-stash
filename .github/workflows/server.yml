@@ -1,0 +1,79 @@
+# Tests the sync server on each push and pull request.
+# A tag "server-v<version>" (for example server-v0.2.0) also makes a GitHub
+# release with the binaries for Linux, macOS and Windows. The binaries
+# contain the version and the commit: "tab-stash-server version" and
+# GET /healthz show them.
+name: Server
+
+on:
+  push:
+    branches: [main]
+    tags: ["server-v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Format
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::run gofmt on: $unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test -count=1 ./...
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/server-v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Build
+        run: scripts/build-release.sh "${GITHUB_REF_NAME#server-v}" "$GITHUB_SHA"
+      - name: Check the version in the binary
+        run: |
+          version="${GITHUB_REF_NAME#server-v}"
+          dir=$(mktemp -d)
+          tar -xzf "dist/tab-stash-server-$version-linux-amd64.tar.gz" -C "$dir"
+          out=$("$dir/tab-stash-server-$version-linux-amd64/tab-stash-server" version)
+          echo "$out"
+          [ "$out" = "tab-stash-server $version (commit $GITHUB_SHA)" ]
+      - name: Make the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#server-v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "Server $version" \
+            --notes "tab-stash-server $version, commit $GITHUB_SHA.
+
+          Check the files with SHA256SUMS. Read README.md in the archive to install or update the server. After an update, GET /healthz shows the version and the commit."

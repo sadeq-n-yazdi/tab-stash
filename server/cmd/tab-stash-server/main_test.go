@@ -5,6 +5,19 @@ import (
 	"testing"
 )
 
+func TestBuildCommit(t *testing.T) {
+	old := commit
+	t.Cleanup(func() { commit = old })
+	commit = "0123456789abcdef"
+	if got := buildCommit(); got != "0123456789abcdef" {
+		t.Errorf("buildCommit = %q, want the -X value", got)
+	}
+	commit = ""
+	if got := buildCommit(); got == "" {
+		t.Error("buildCommit is empty, want a commit or \"unknown\"")
+	}
+}
+
 func TestApplySettings(t *testing.T) {
 	t.Setenv("TAB_STASH_ADDR", "from-env")
 	os.Unsetenv("TAB_STASH_PASSWORD_SALT")

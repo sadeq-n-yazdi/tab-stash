@@ -45,7 +45,10 @@ type Config struct {
 	// PublicURL is the address of the server for its users, for example
 	// "https://tabs.example.com/". It is only shown on the home page.
 	PublicURL string
-	Logger    *slog.Logger
+	// Version and Commit identify the build. GET /healthz returns them.
+	Version string
+	Commit  string
+	Logger  *slog.Logger
 }
 
 // Server is the HTTP handler.
@@ -66,6 +69,12 @@ func New(st *store.Store, cfg Config) *Server {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
+	}
+	if cfg.Version == "" {
+		cfg.Version = "dev"
+	}
+	if cfg.Commit == "" {
+		cfg.Commit = "unknown"
 	}
 	s := &Server{store: st, cfg: cfg, origins: map[string]bool{}, limiter: newLimiter(loginTries, loginWindow),
 		users: newLimiter(userLoginTries, loginWindow), pwTries: newLimiter(loginTries, loginWindow)}
@@ -99,7 +108,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.S
 // ---------- handlers ----------
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"version": s.cfg.Version,
+		"commit":  s.cfg.Commit,
+	})
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {

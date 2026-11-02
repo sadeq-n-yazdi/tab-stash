@@ -128,6 +128,26 @@ func TestSyncFlow(t *testing.T) {
 	}
 }
 
+func TestHealthVersion(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "health.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	srv := httptest.NewServer(New(st, Config{Version: "1.2.3", Commit: "abc123"}))
+	t.Cleanup(srv.Close)
+	resp, out := do(t, srv, "GET", "/healthz", "", "")
+	if resp.StatusCode != 200 || out["status"] != "ok" || out["version"] != "1.2.3" || out["commit"] != "abc123" {
+		t.Errorf("healthz: %d %v", resp.StatusCode, out)
+	}
+
+	srv2 := httptest.NewServer(New(st, Config{}))
+	t.Cleanup(srv2.Close)
+	if _, out := do(t, srv2, "GET", "/healthz", "", ""); out["version"] != "dev" || out["commit"] != "unknown" {
+		t.Errorf("healthz defaults: %v", out)
+	}
+}
+
 func TestHSTSOnlyWithTLS(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "tls.db"))
 	if err != nil {
