@@ -178,3 +178,5 @@ document.addEventListener('keydown', (e) => {
 });
 
 init().catch((error) => setStatus(error.message, 'error'));
+// Get the changes of other computers (only if the last sync is older than one minute).
+chrome.runtime.sendMessage({ type: 'sync-check' }).catch(() => {});

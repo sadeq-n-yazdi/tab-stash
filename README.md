@@ -239,7 +239,13 @@ The extension does a sync at these times:
 - 30 seconds after a change.
 - Every 15 minutes.
 - When Chrome starts.
+- When you open the manager or the popup.
+- When you go back to the manager tab.
+- When the computer is active again, for example after sleep.
 - When you click **Sync now**.
+
+Except for **Sync now**, the extension does not do two syncs in less than one
+minute.
 
 The extension does not keep your password. It keeps a login token. If the
 token is not valid any more, the side bar tells you to log in again.
@@ -271,6 +277,7 @@ The extension asks for these permissions:
 | `storage`, `unlimitedStorage` | To keep your groups and saved tabs. The usual limit of 10 MB is too small for a large stash. |
 | `contextMenus` | To show the right-click menus. |
 | `alarms` | To remove the number from the icon after 30 seconds, and to start a sync. |
+| `idle` | To start a sync when the computer is active again. The extension does not keep or send this state. |
 | `favicon` | To show the site icons in the manager. The extension does not keep the icons. |
 | Access to the sync server (optional) | The extension asks for this permission when you connect to a server, and only for the address of that server. A server that allows the extension (CORS) works also if you do not give the permission. |
 

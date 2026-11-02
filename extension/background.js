@@ -52,6 +52,30 @@ async function runSync(reason) {
   }
 }
 
+/** Minimum time between two syncs that the user did not ask for. */
+const SYNC_STALE_MS = 60_000;
+
+/**
+ * Starts a sync if the user is logged in and the last sync is older than one
+ * minute. Used when a page opens, when the computer is active again and when
+ * the network comes back.
+ */
+async function syncIfStale(reason) {
+  const { token, lastSyncAt } = await sync.getState();
+  if (!token) return;
+  const last = Date.parse(lastSyncAt || '') || 0;
+  if (Date.now() - last < SYNC_STALE_MS) return;
+  await runSync(reason);
+}
+
+// The computer wakes up, or the user comes back after a pause.
+chrome.idle.onStateChanged.addListener((state) => {
+  if (state === 'active') syncIfStale('active');
+});
+
+// The network comes back (only while the service worker runs).
+self.addEventListener('online', () => syncIfStale('online'));
+
 async function startSyncTimer() {
   const { token } = await sync.getState();
   if (!token) return chrome.alarms.clear(SYNC_PERIODIC);
@@ -214,6 +238,8 @@ async function handleSyncMessage(message) {
     await chrome.alarms.clear(SYNC_SOON);
   } else if (message.type === 'sync-now') {
     await sync.syncNow();
+  } else if (message.type === 'sync-check') {
+    await syncIfStale('page');
   } else {
     throw new Error(`Unknown message: ${message.type}`);
   }

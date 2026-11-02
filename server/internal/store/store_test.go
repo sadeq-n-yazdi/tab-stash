@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -208,6 +209,85 @@ func TestMigrateFromV1(t *testing.T) {
 			t.Errorf("user_version = %d", v)
 		}
 		st.Close()
+	}
+}
+
+func TestMigrateFromV2AddsDeletedAt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`DROP TABLE records`,
+		`CREATE TABLE records (user_id INTEGER NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (user_id, id))`,
+		`INSERT INTO records VALUES (1, 'live', 'group', '2026-11-01T10:00:00.000Z', '{"id":"live","deletedAt":null}', 1)`,
+		`INSERT INTO records VALUES (1, 'gone', 'group', '2026-11-01T10:00:00.000Z', '{"id":"gone","deletedAt":"2026-11-02T08:00:00.000Z"}', 2)`,
+		`PRAGMA user_version = 2`,
+	} {
+		if _, err := st.db.Exec(q); err != nil {
+			t.Fatal(q, err)
+		}
+	}
+	st.Close()
+
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	got := map[string]sql.NullString{}
+	rows, err := st.db.Query(`SELECT id, deleted_at FROM records`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id string
+		var d sql.NullString
+		if err := rows.Scan(&id, &d); err != nil {
+			t.Fatal(err)
+		}
+		got[id] = d
+	}
+	rows.Close()
+	if got["live"].Valid || got["gone"].String != "2026-11-02T08:00:00.000Z" {
+		t.Errorf("deleted_at after migration: %+v", got)
+	}
+}
+
+func TestDeletedAtColumnFollowsTheRecord(t *testing.T) {
+	st, _ := openTest(t)
+	ctx := context.Background()
+	if err := st.CreateUser(ctx, "u", "h", RoleUser); err != nil {
+		t.Fatal(err)
+	}
+	var userID int64
+	if err := st.db.QueryRow(`SELECT id FROM users WHERE username = 'u'`).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	put := func(js string) {
+		r, _, err := ParseRecord(json.RawMessage(js))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.PutRecords(ctx, userID, []Record{r}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	column := func() sql.NullString {
+		var d sql.NullString
+		st.db.QueryRow(`SELECT deleted_at FROM records WHERE id = 'g1'`).Scan(&d)
+		return d
+	}
+	put(groupJSON)
+	if column().Valid {
+		t.Error("a live record has deleted_at")
+	}
+	deleted := strings.Replace(groupJSON, `"deletedAt":null`, `"deletedAt":"2026-11-03T00:00:00.000Z"`, 1)
+	deleted = strings.Replace(deleted, `"updatedAt":"2026-11-01T10:00:00.000Z"`, `"updatedAt":"2026-11-03T00:00:00.000Z"`, 1)
+	put(deleted)
+	if d := column(); d.String != "2026-11-03T00:00:00.000Z" {
+		t.Errorf("deleted_at = %+v", d)
 	}
 }
 

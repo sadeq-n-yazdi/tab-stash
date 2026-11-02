@@ -45,8 +45,8 @@ func ValidUsername(name string) bool {
 	return true
 }
 
-// schemaVersion 2 added users.role.
-const schemaVersion = 2
+// schemaVersion 2 added users.role. Version 3 added records.deleted_at.
+const schemaVersion = 3
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS records (
   id         TEXT NOT NULL,
   kind       TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  deleted_at TEXT,
   data       TEXT NOT NULL,
   seq        INTEGER NOT NULL,
   PRIMARY KEY (user_id, id)
@@ -155,6 +156,22 @@ func (s *Store) migrate() error {
 		// Version 1 has no role column. All version 1 accounts are users.
 		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'))`); err != nil {
 			return fmt.Errorf("migrate to version 2: %w", err)
+		}
+	}
+	if version == 1 || version == 2 {
+		// Versions 1 and 2 keep deletedAt only in the JSON data. Copy it
+		// into its own column.
+		var has int
+		if err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info('records') WHERE name = 'deleted_at'`).Scan(&has); err != nil {
+			return fmt.Errorf("migrate to version 3: %w", err)
+		}
+		if has == 0 {
+			if _, err := tx.Exec(`ALTER TABLE records ADD COLUMN deleted_at TEXT`); err != nil {
+				return fmt.Errorf("migrate to version 3: %w", err)
+			}
+		}
+		if _, err := tx.Exec(`UPDATE records SET deleted_at = json_extract(data, '$.deletedAt')`); err != nil {
+			return fmt.Errorf("migrate to version 3: %w", err)
 		}
 	}
 	if _, err := tx.Exec(schema); err != nil {
@@ -405,10 +422,10 @@ func (s *Store) PutRecords(ctx context.Context, userID int64, records []Record) 
 		}
 		seq++
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO records (user_id, id, kind, updated_at, data, seq) VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO records (user_id, id, kind, updated_at, deleted_at, data, seq) VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (user_id, id) DO UPDATE SET kind = excluded.kind, updated_at = excluded.updated_at,
-			  data = excluded.data, seq = excluded.seq`,
-			userID, r.ID, r.Kind, r.UpdatedAt, string(r.Data), seq); err != nil {
+			  deleted_at = excluded.deleted_at, data = excluded.data, seq = excluded.seq`,
+			userID, r.ID, r.Kind, r.UpdatedAt, r.deletedAt(), string(r.Data), seq); err != nil {
 			return res, err
 		}
 		res.Accepted++

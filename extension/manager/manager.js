@@ -595,6 +595,12 @@ chrome.storage.onChanged.addListener((_changes, area) => {
 });
 window.addEventListener('hashchange', () => { readHash(); render(); });
 
+// Get the changes of other computers when the manager opens or is shown again.
+// The service worker syncs only if the last sync is older than one minute.
+const checkSync = () => chrome.runtime.sendMessage({ type: 'sync-check' }).catch(() => {});
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkSync(); });
+checkSync();
+
 readHash();
 guard(async () => {
   await store.ensureDefaultGroup();

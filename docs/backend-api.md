@@ -83,6 +83,20 @@ Rules for records:
 - All times are ISO 8601 UTC strings.
 - The server adds one field, `seq`. This is an integer that increases by 1 for
   each change on the server. The client uses `seq` as a cursor.
+- A deletion is logical. The client sets `deletedAt` and sends the record
+  again. The server keeps the record, and other clients get the deletion.
+- The server keeps `updatedAt` and `deletedAt` also in their own columns
+  (`updated_at` and `deleted_at`). The JSON data of the record stays the
+  source for the clients.
+
+Why `seq` is the cursor, not `updatedAt`:
+
+- `updatedAt` comes from the clock of each computer. A computer with a slow
+  clock can send a change with an old `updatedAt`. A cursor on `updatedAt`
+  does not find this change.
+- The server sets `seq` when it stores the change. Thus, a client that asks
+  for `seq > N` gets each change one time.
+- `updatedAt` decides which version of a record is the newest.
 
 ## 5. API
 
@@ -263,7 +277,13 @@ that does a sync. It does one sync at a time.
      minimum time of `chrome.alarms`.)
    - Every 15 minutes, with `chrome.alarms`.
    - When the browser starts.
+   - When the manager or the popup opens, and when the manager tab is shown
+     again.
+   - When `chrome.idle` reports that the computer is active again.
    - When the user clicks **Sync now**.
+
+   Except for **Sync now**, the extension does not do two syncs in less
+   than one minute.
 6. For each sync, the extension does these steps:
    1. It sends the records with local changes with `POST /sync`, 500 records
       for each request, groups first. If the server rejects a record, the

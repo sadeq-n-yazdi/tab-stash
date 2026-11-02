@@ -35,7 +35,17 @@ type Record struct {
 	Kind      string
 	UpdatedAt string
 	updated   time.Time
+	// DeletedAt is the time of the logical deletion, or "" for a live record.
+	DeletedAt string
 	Data      json.RawMessage
+}
+
+// deletedAt returns the value for the deleted_at column: NULL for a live record.
+func (r Record) deletedAt() any {
+	if r.DeletedAt == "" {
+		return nil
+	}
+	return r.DeletedAt
 }
 
 // fields is the typed view used for validation only.
@@ -143,7 +153,11 @@ func ParseRecord(raw json.RawMessage) (Record, string, error) {
 	if err != nil {
 		return Record{}, id, err
 	}
-	return Record{ID: id, Kind: *f.Kind, UpdatedAt: *f.UpdatedAt, updated: updated, Data: data}, id, nil
+	deletedAt := ""
+	if f.DeletedAt != nil {
+		deletedAt = *f.DeletedAt
+	}
+	return Record{ID: id, Kind: *f.Kind, UpdatedAt: *f.UpdatedAt, updated: updated, DeletedAt: deletedAt, Data: data}, id, nil
 }
 
 // withSeq returns the stored JSON with the server "seq" field added.

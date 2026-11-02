@@ -164,6 +164,25 @@ try {
       }).then((r) => r.json());
       const names = pulled.records.filter((r) => r.kind === 'group' && !r.deletedAt).map((r) => r.name).sort();
       assert.ok(names.includes('Leisure reading'), `server has the groups: ${JSON.stringify(names)}`);
+      // Another computer adds a group. When the manager opens again and the
+      // last sync is old, the manager shows the new group.
+      const now = new Date().toISOString();
+      const pushed = await fetch(`${sync.url}/api/v1/sync`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${login.token}` },
+        body: JSON.stringify({ records: [{
+          id: 'remote-group', kind: 'group', name: 'From the other computer', note: '', labels: [],
+          color: 'cyan', createdAt: now, updatedAt: now, deletedAt: null,
+        }] }),
+      }).then((r) => r.json());
+      assert.equal(pushed.accepted, 1, JSON.stringify(pushed));
+      await worker.evaluate(async () => {
+        const { sync } = await chrome.storage.local.get('sync');
+        await chrome.storage.local.set({ sync: { ...sync, lastSyncAt: new Date(Date.now() - 120_000).toISOString() } });
+      });
+      await manager.reload();
+      await manager.locator('#group-list', { hasText: 'From the other computer' }).waitFor({ timeout: 15_000 });
+      console.log('✔ opening the manager gets the changes of another computer');
       if (shots) await manager.screenshot({ path: join(shots, 'manager-sync.png') });
       console.log(`✔ sync connected from the manager; server has ${pulled.records.length} records`);
     } finally {
