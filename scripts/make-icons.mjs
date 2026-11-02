@@ -43,7 +43,7 @@ function png(size, rgba) {
 }
 
 // Shape in unit coordinates (0..1): a rounded blue square with three
-// coloured "shelf" bars (the saved tabs).
+// coloured "stash" bars (the saved tabs).
 const BG = [26, 115, 232];
 const BARS = [
   { y0: 0.24, y1: 0.36, x1: 0.78, c: [255, 255, 255] },

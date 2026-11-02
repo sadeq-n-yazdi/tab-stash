@@ -84,8 +84,9 @@ test('parseImport validates format and sanitises records', () => {
   assert.deepEqual(parsed.groups.map((x) => x.id), [g.id]);
   assert.deepEqual(parsed.bookmarks.map((x) => x.id), [b.id, 'y']);
   assert.equal(parsed.bookmarks[1].color, 'grey');
-  assert.throws(() => parseImport('{"format":"other"}'), /not a Tab Shelf export/);
-  assert.throws(() => parseImport({ format: 'tab-shelf', version: 99 }), /newer/);
+  assert.throws(() => parseImport('{"format":"other"}'), /not a Tab Stash export/);
+  assert.throws(() => parseImport({ format: 'tab-stash', version: 99 }), /newer/);
+  assert.deepEqual(parseImport({ ...data, format: 'tab-shelf' }).groups.map((x) => x.id), [g.id], 'old format name still imports');
 });
 
 test('URL helpers', () => {

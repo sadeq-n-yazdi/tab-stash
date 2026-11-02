@@ -5,7 +5,9 @@
 // merge records with last-write-wins on updatedAt (see mergeRecords).
 
 export const SCHEMA_VERSION = 1;
-export const EXPORT_FORMAT = 'tab-shelf';
+export const EXPORT_FORMAT = 'tab-stash';
+// Exports made before the rename to Tab Stash use this format name.
+const LEGACY_FORMATS = ['tab-shelf'];
 
 // The same 9 colours that Chrome uses for native tab groups, so a saved group
 // can be reopened as a real Chrome tab group with the same colour.
@@ -248,7 +250,7 @@ export function buildExport(groups, bookmarks, now = nowIso()) {
 /** Parses an export file. Throws on a wrong format; drops invalid records. */
 export function parseImport(json) {
   const data = typeof json === 'string' ? JSON.parse(json) : json;
-  if (!data || data.format !== EXPORT_FORMAT) throw new Error('This file is not a Tab Shelf export.');
+  if (!data || (data.format !== EXPORT_FORMAT && !LEGACY_FORMATS.includes(data.format))) throw new Error('This file is not a Tab Stash export.');
   if (data.version > SCHEMA_VERSION) throw new Error(`Export version ${data.version} is newer than this extension supports.`);
   const groups = (data.groups ?? []).map((g) => sanitizeRecord({ ...g, kind: 'group' })).filter(Boolean);
   // Bookmarks may refer to groups that exist only locally; the store checks that.

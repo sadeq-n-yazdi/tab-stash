@@ -25,7 +25,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
-const profile = mkdtempSync(join(tmpdir(), 'tab-shelf-'));
+const profile = mkdtempSync(join(tmpdir(), 'tab-stash-'));
 const context = await chromium.launchPersistentContext(profile, {
   channel: 'chromium',
   headless: true,

@@ -1,6 +1,6 @@
-# Tab Shelf: how to install, update and move
+# Tab Stash: how to install, update and move
 
-This document tells you how to install Tab Shelf on a new computer. It also
+This document tells you how to install Tab Stash on a new computer. It also
 tells you how to move your saved tabs, update the extension, and remove it.
 
 For the use of the extension, read [README.md](README.md).
@@ -73,10 +73,10 @@ THE EXTENSION STOPS.
 5. Click **Load unpacked**.
 6. Select the `extension` folder. Select the folder that contains the
    `manifest.json` file, not the folder above it.
-7. Make sure that the **Tab Shelf** card shows on the page.
+7. Make sure that the **Tab Stash** card shows on the page.
 8. Make sure that the ID on the card is `icppdneajfbmmpkgejjpjfegkppmneej`.
 9. Click the puzzle icon in the toolbar.
-10. Click the pin icon near **Tab Shelf**. The Tab Shelf icon shows in the toolbar.
+10. Click the pin icon near **Tab Stash**. The Tab Stash icon shows in the toolbar.
 
 The extension ID is the same on all computers, because `manifest.json` has a
 fixed `key`. Thus, the location of the folder has no effect on the ID.
@@ -84,7 +84,7 @@ fixed `key`. Thus, the location of the folder has no effect on the ID.
 ## 4. Make sure that the extension works
 
 1. Open a web page, for example <https://example.com>.
-2. Push `Alt+Shift+S`. The Tab Shelf popup opens.
+2. Push `Alt+Shift+S`. The Tab Stash popup opens.
 3. Make sure that **Group** shows "Inbox".
 4. Push `Enter`. The tab closes.
 5. Push `Alt+Shift+M`. The manager page opens.
@@ -105,7 +105,7 @@ On the old computer:
 
 1. Open the manager page (`Alt+Shift+M`).
 2. Click **Export**.
-3. Chrome downloads a file with the name `tab-shelf-YYYY-MM-DD.json`.
+3. Chrome downloads a file with the name `tab-stash-YYYY-MM-DD.json`.
 4. Copy the file to the new computer. For example, use a USB drive or your
    cloud storage.
 
@@ -141,7 +141,7 @@ CAN CAUSE A LOSS OF DATA.
    - If you used a ZIP file, download the new ZIP file. Replace the old files
      with the new files. Use the same folder.
 3. Go to `chrome://extensions`.
-4. Find the **Tab Shelf** card. Click the reload icon (↻) on the card.
+4. Find the **Tab Stash** card. Click the reload icon (↻) on the card.
 
 The update keeps your saved tabs, because the extension ID does not change.
 
@@ -152,7 +152,7 @@ DELETES ALL SAVED TABS WHEN IT REMOVES THE EXTENSION. YOU CANNOT GET THEM BACK.
 
 1. Export your saved tabs. Do the steps "On the old computer" in section 5.
 2. Go to `chrome://extensions`.
-3. Find the **Tab Shelf** card. Click **Remove**.
+3. Find the **Tab Stash** card. Click **Remove**.
 4. Optional: delete the folder of the extension.
 
 ## 8. Troubleshooting
@@ -169,7 +169,7 @@ at the same location as at the installation. If you moved the folder, do these
 steps:
 
 1. Go to `chrome://extensions`.
-2. Remove the **Tab Shelf** card.
+2. Remove the **Tab Stash** card.
 3. Click **Load unpacked** and select the folder at its new location.
 
 Chrome keeps the data under the extension ID, and the ID does not change. But
@@ -179,7 +179,7 @@ opens, export your saved tabs before you remove the card.
 ### Shortcuts show "not set"
 
 1. Go to `chrome://extensions/shortcuts`.
-2. Find **Tab Shelf**.
+2. Find **Tab Stash**.
 3. Click the pencil icon near the shortcut.
 4. Push a different key combination. Use `Alt+Shift` or `Ctrl+Shift` and a
    letter.
@@ -194,7 +194,7 @@ An error occurred. Put the mouse pointer on the icon to read the error. For
 more data, do these steps:
 
 1. Go to `chrome://extensions`.
-2. On the **Tab Shelf** card, click **service worker**.
+2. On the **Tab Stash** card, click **service worker**.
 3. Read the messages in the **Console** tab.
 
 ### A saved tab does not open
@@ -207,7 +207,7 @@ Copy the URL from the **Edit** window and paste it into the address bar.
 
 Chrome can show this message when it starts. Click the close button (✕). Do
 not click **Disable**. If you click **Disable**, go to `chrome://extensions`
-and set the switch on the **Tab Shelf** card to on.
+and set the switch on the **Tab Stash** card to on.
 
 ## 9. Install the development tools (optional)
 
@@ -236,5 +236,5 @@ Do this procedure only if you want to change the code or run the tests.
 
 6. Make sure that the last line is `SMOKE TEST PASSED`.
 
-After you change the code, click the reload icon (↻) on the **Tab Shelf** card
+After you change the code, click the reload icon (↻) on the **Tab Stash** card
 in `chrome://extensions`.

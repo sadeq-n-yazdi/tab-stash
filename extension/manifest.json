@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Tab Shelf",
+  "name": "Tab Stash",
   "version": "0.1.0",
   "description": "Save open tabs into your own groups with notes, labels and a colour, close them to free memory, and open them again later.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA57v9PBkhryOdiiDMfMrUNc0Bw/jJCfCgWQSx1pT+9genIf6/jH75a41JaXCJHbVeLnJ8d8+zFNCqbQOl5l1A/dfjJ9lbhZRGhE/S86PTfhiVpUJ9weUkQvKGQWZjfr0uAKRqQehXaf0j3yhJR+R5JFNGMibfxFclN3KR0OlIl2/KXmO7dbQoe5fqsYVnHSzBe78Xs0Y4lEqD5kdZiMzaaTySjRlCZS4IvrYcOAY4ndxXcw4bmWMBv4GEMD+BVq8HwYL2MZ5iHm484U2IZNUguQn6xdYV/Ekp+aLhH7MnLeFA44KTJMHMKrN2ERk9wu1DdQkU3kyDv1hoc4T/pxl6PwIDAQAB",
@@ -12,7 +12,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Tab Shelf",
+    "default_title": "Tab Stash",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -59,7 +59,7 @@
         "default": "Alt+Shift+M",
         "mac": "Alt+Shift+M"
       },
-      "description": "Open the Tab Shelf manager"
+      "description": "Open the Tab Stash manager"
     }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "name": "tab-shelf",
+  "name": "tab-stash",
   "version": "0.1.0",
   "private": true,
   "description": "Chrome extension: save open tabs into groups with notes, labels and colours, close them, and open them again later.",

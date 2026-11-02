@@ -53,7 +53,7 @@ The design is in [docs/backend-api.md](docs/backend-api.md).
       with the same domain.
 - [ ] Add an undo for **Delete** and **Restore**.
 - [ ] Find old bookmarks (for example, older than 90 days) to help the user
-      clean the shelf.
+      clean the stash.
 - [ ] Add keyboard navigation in the bookmark list of the manager (up, down,
       `Enter` to open).
 

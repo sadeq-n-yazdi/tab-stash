@@ -217,7 +217,7 @@ function bookmarkItem(b) {
       b.labels.length ? h('div', { class: 'chips' }, labelChips(b.labels, { onClick: toggleLabel, active: state.filter.labels })) : null),
     h('div', { class: 'row-actions' },
       h('button', { type: 'button', class: 'small', onclick: () => openOne(b, false) }, 'Open'),
-      h('button', { type: 'button', class: 'small', title: 'Open and remove from the shelf', onclick: () => openOne(b, true) }, 'Restore'),
+      h('button', { type: 'button', class: 'small', title: 'Open and remove from the stash', onclick: () => openOne(b, true) }, 'Restore'),
       h('button', { type: 'button', class: 'small', onclick: () => editBookmark(b) }, 'Edit'),
       h('button', { type: 'button', class: 'small danger', onclick: () => deleteBookmark(b) }, 'Delete')),
   );
@@ -416,7 +416,7 @@ async function exportAll() {
   const data = await store.exportData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const a = h('a', { href: url, download: `tab-shelf-${new Date().toISOString().slice(0, 10)}.json` });
+  const a = h('a', { href: url, download: `tab-stash-${new Date().toISOString().slice(0, 10)}.json` });
   document.body.append(a);
   a.click();
   a.remove();

@@ -1,11 +1,11 @@
-# Tab Shelf sync server: API design
+# Tab Stash sync server: API design
 
 Status: design only. This server does not exist yet.
 
 ## 1. Purpose
 
-The sync server keeps your Tab Shelf data on your own web server. With the
-server, you can use the same shelf in more than one browser and on more than one
+The sync server keeps your Tab Stash data on your own web server. With the
+server, you can use the same stash in more than one browser and on more than one
 computer. The server also has a web page. You can use this page in any browser
 after you log in.
 
@@ -24,8 +24,8 @@ after you log in.
 ## 3. Architecture
 
 ```
- Chrome + Tab Shelf ──┐
- Chrome + Tab Shelf ──┼── HTTPS ──>  reverse proxy (TLS)  ──>  sync server  ──>  database
+ Chrome + Tab Stash ──┐
+ Chrome + Tab Stash ──┼── HTTPS ──>  reverse proxy (TLS)  ──>  sync server  ──>  database
  Any browser (web UI) ┘
 ```
 

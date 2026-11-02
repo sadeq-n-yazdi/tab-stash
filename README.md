@@ -1,8 +1,8 @@
-# Tab Shelf
+# Tab Stash
 
-Tab Shelf is an extension for Google Chrome. It saves open tabs into groups
+Tab Stash is an extension for Google Chrome. It saves open tabs into groups
 that you make. Then it closes the tabs, and Chrome uses less memory. Later, you
-can open the tabs again from the shelf.
+can open the tabs again from the stash.
 
 Each group and each saved tab has:
 
@@ -52,8 +52,8 @@ Node.js to use the extension.
 4. Set **Developer mode** to on. The switch is at the top right.
 5. Click **Load unpacked**.
 6. Select the `extension` folder. This folder contains `manifest.json`.
-7. Make sure that the ID on the **Tab Shelf** card is `icppdneajfbmmpkgejjpjfegkppmneej`.
-8. Click the puzzle icon in the toolbar, and pin **Tab Shelf**.
+7. Make sure that the ID on the **Tab Stash** card is `icppdneajfbmmpkgejjpjfegkppmneej`.
+8. Click the puzzle icon in the toolbar, and pin **Tab Stash**.
 
 When you install the extension, it makes one group with the name "Inbox".
 
@@ -73,7 +73,7 @@ For the full procedure, read [HOWTO.md](HOWTO.md). It also tells you how to:
 
 ![The popup](docs/images/popup.png)
 
-1. Click the Tab Shelf icon, or push `Alt+Shift+S`.
+1. Click the Tab Stash icon, or push `Alt+Shift+S`.
 2. Select what to save:
    - **This tab** (`Alt+1`)
    - **All tabs in window** (`Alt+2`)
@@ -94,16 +94,16 @@ name and the colour of the Chrome tab group.
 ### Save with the right-click menu
 
 1. Right-click on a page.
-2. Select **Save tab and close to Tab Shelf**.
+2. Select **Save tab and close to Tab Stash**.
 3. Select a group. A star (★) shows the group that you used last.
 
 To save a link and not open it, right-click on the link. Then select **Save
-link to Tab Shelf** and a group.
+link to Tab Stash** and a group.
 
 ### What the extension does not save
 
 - Blank pages and new tab pages.
-- The pages of Tab Shelf.
+- The pages of Tab Stash.
 - Pinned tabs, when you save all tabs in a window. You can change this in
   [Settings](#settings).
 
@@ -128,7 +128,7 @@ the error, put the mouse pointer on the icon.
 To change a shortcut:
 
 1. Go to `chrome://extensions/shortcuts`. You can also click **Change shortcuts** on the manager page.
-2. Find **Tab Shelf**.
+2. Find **Tab Stash**.
 3. Click the pencil icon near the shortcut, and push the new keys.
 
 NOTE: Chrome does not accept some keys, because Chrome uses them. For example,
@@ -142,14 +142,14 @@ Open the manager page. Push `Alt+Shift+M`, or click **Manager ↗** in the popup
 
 For one saved tab, click one of these buttons:
 
-- **Open**: open the tab. The tab stays on the shelf.
-- **Restore**: open the tab and remove it from the shelf.
+- **Open**: open the tab. The tab stays on the stash.
+- **Restore**: open the tab and remove it from the stash.
 
 For a group, select the group in the left column. Then click one of these
 buttons:
 
-- **Open all**: open all tabs of the group. The tabs stay on the shelf.
-- **Restore all**: open all tabs of the group and remove them from the shelf.
+- **Open all**: open all tabs of the group. The tabs stay on the stash.
+- **Restore all**: open all tabs of the group and remove them from the stash.
 - **New window**: open all tabs of the group in a new window.
 
 The extension puts the tabs into a Chrome tab group. The Chrome tab group gets
@@ -166,7 +166,7 @@ To work on many tabs at the same time:
 
 Chrome does not let an extension open some types of URL, for example `file://`
 URLs and some `chrome://` URLs. The manager shows "can fail to open" for these
-URLs. If a tab does not open, the extension keeps it on the shelf and shows the
+URLs. If a tab does not open, the extension keeps it on the stash and shows the
 URL in the status line.
 
 ## Find saved tabs
@@ -190,7 +190,7 @@ group, note, labels and colour.
 Use export to make a backup, or to move your data to a different computer.
 
 1. On the manager page, click **Export**.
-2. Chrome downloads a file with the name `tab-shelf-YYYY-MM-DD.json`.
+2. Chrome downloads a file with the name `tab-stash-YYYY-MM-DD.json`.
 
 To import:
 
@@ -225,7 +225,7 @@ The extension asks for these permissions:
 | ---------- | -------------------------- |
 | `tabs` | To read the title and URL of the tabs that you save, and to close and open tabs. |
 | `tabGroups` | To save a Chrome tab group, and to open a saved group as a Chrome tab group. |
-| `storage`, `unlimitedStorage` | To keep your groups and saved tabs. The usual limit of 10 MB is too small for a large shelf. |
+| `storage`, `unlimitedStorage` | To keep your groups and saved tabs. The usual limit of 10 MB is too small for a large stash. |
 | `contextMenus` | To show the right-click menus. |
 | `alarms` | To remove the number from the icon after 30 seconds. |
 | `favicon` | To show the site icons in the manager. The extension does not keep the icons. |
@@ -283,7 +283,7 @@ npm run icons
 ```
 
 After you change the code, go to `chrome://extensions` and click the reload
-icon on the Tab Shelf card.
+icon on the Tab Stash card.
 
 ### Data model
 
@@ -304,8 +304,8 @@ days, the extension removes the record.
 
 ## Server sync (future work)
 
-A future server will keep the shelf on your own web server, with HTTPS and a
-user login. Then you can use the same shelf in other browsers and on other
+A future server will keep the stash on your own web server, with HTTPS and a
+user login. Then you can use the same stash in other browsers and on other
 computers. The file [docs/backend-api.md](docs/backend-api.md) gives the design.
 The extension already has the data model that the server needs.
 
@@ -320,4 +320,4 @@ The extension already has the data model that the server needs.
 
 ## License
 
-Tab Shelf is free software under the MIT License. Read [LICENSE](LICENSE).
+Tab Stash is free software under the MIT License. Read [LICENSE](LICENSE).

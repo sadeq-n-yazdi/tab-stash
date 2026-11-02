@@ -44,21 +44,21 @@ async function reportSaved(result) {
   const n = result.added + result.duplicates;
   await flash(n > 0 ? String(n) : '0', '#188038');
   await chrome.action.setTitle({
-    title: `Tab Shelf: saved ${result.added} tab(s) to "${result.groupName}"` +
+    title: `Tab Stash: saved ${result.added} tab(s) to "${result.groupName}"` +
       (result.duplicates ? ` (${result.duplicates} already there)` : ''),
   });
 }
 
 async function reportError(error) {
-  console.error('[Tab Shelf]', error);
+  console.error('[Tab Stash]', error);
   await flash('!', '#d93025');
-  await chrome.action.setTitle({ title: `Tab Shelf error: ${error?.message ?? error}` });
+  await chrome.action.setTitle({ title: `Tab Stash error: ${error?.message ?? error}` });
 }
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== BADGE_ALARM) return;
   await chrome.action.setBadgeText({ text: '' });
-  await chrome.action.setTitle({ title: 'Tab Shelf' });
+  await chrome.action.setTitle({ title: 'Tab Stash' });
 });
 
 // ---------- core save ----------
@@ -105,7 +105,7 @@ let menuBuild = Promise.resolve();
 
 function rebuildMenus() {
   // Serialize rebuilds so that two quick changes cannot create duplicate ids.
-  menuBuild = menuBuild.then(buildMenus).catch((e) => console.error('[Tab Shelf] menu', e));
+  menuBuild = menuBuild.then(buildMenus).catch((e) => console.error('[Tab Stash] menu', e));
   return menuBuild;
 }
 
@@ -122,14 +122,14 @@ async function buildMenus() {
   await chrome.contextMenus.removeAll();
   const { groups, settings } = await store.load();
   const closeText = settings.closeAfterSave ? 'Save tab and close' : 'Save tab';
-  await createMenu({ id: MENU_PAGE, title: `${closeText} to Tab Shelf`, contexts: ['page'] });
-  await createMenu({ id: MENU_LINK, title: 'Save link to Tab Shelf', contexts: ['link'] });
+  await createMenu({ id: MENU_PAGE, title: `${closeText} to Tab Stash`, contexts: ['page'] });
+  await createMenu({ id: MENU_LINK, title: 'Save link to Tab Stash', contexts: ['link'] });
   for (const g of groups) {
     const mark = g.id === settings.lastGroupId ? ' ★' : '';
     await createMenu({ id: `${MENU_PAGE}:${g.id}`, parentId: MENU_PAGE, title: g.name + mark, contexts: ['page'] });
     await createMenu({ id: `${MENU_LINK}:${g.id}`, parentId: MENU_LINK, title: g.name + mark, contexts: ['link'] });
   }
-  await createMenu({ id: MENU_MANAGER, title: 'Open Tab Shelf manager', contexts: ['action'] });
+  await createMenu({ id: MENU_MANAGER, title: 'Open Tab Stash manager', contexts: ['action'] });
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {

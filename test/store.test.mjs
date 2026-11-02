@@ -88,7 +88,7 @@ test('a batch keeps its tab order in the newest-first list', async () => {
 test('import skips bookmarks whose group is unknown', async () => {
   const store = createStore(fakeStorageArea());
   const data = {
-    format: 'tab-shelf', version: 1, groups: [],
+    format: 'tab-stash', version: 1, groups: [],
     bookmarks: [{ id: 'b1', groupId: 'nope', url: 'https://a', createdAt: 'x', updatedAt: 'x' }],
   };
   assert.deepEqual(await store.importData(parseImport(data)), { groups: 0, bookmarks: 0, skipped: 1 });
