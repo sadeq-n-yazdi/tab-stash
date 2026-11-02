@@ -1,0 +1,32 @@
+body { width: 380px; }
+
+form { display: grid; gap: 10px; padding: 12px 14px; }
+
+header { display: flex; align-items: center; justify-content: space-between; }
+header h1 { font-size: 15px; }
+
+.scope { display: flex; flex-wrap: wrap; gap: 4px 12px; border: 0; margin: 0; padding: 0; }
+.scope label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+.page-info { display: flex; align-items: center; gap: 8px; }
+.page-info img { flex: none; }
+.url { margin: -6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.warn { margin: -6px 0 0; color: var(--danger); }
+
+.new-group {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+
+.field { display: grid; gap: 4px; font-weight: 500; }
+
+.check { display: flex; align-items: center; gap: 6px; }
+
+footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+footer .status { margin: 0; flex: 1; }
+footer kbd { background: transparent; color: inherit; border-color: currentColor; opacity: 0.7; }
+.keys { margin: 0; text-align: right; }

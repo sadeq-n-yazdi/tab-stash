@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tab Shelf</title>
+  <link rel="stylesheet" href="../lib/base.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <form id="save-form" autocomplete="off">
+    <header>
+      <h1>Save to Tab Shelf</h1>
+      <button type="button" id="open-manager" class="small" title="Open the manager page (Alt+Shift+M)">Manager ↗</button>
+    </header>
+
+    <fieldset class="scope" id="scope">
+      <legend class="visually-hidden">What to save</legend>
+      <label><input type="radio" name="scope" value="current" checked> This tab <kbd>Alt+1</kbd></label>
+      <label><input type="radio" name="scope" value="window"> <span id="window-label">All tabs in window</span> <kbd>Alt+2</kbd></label>
+      <label id="tabgroup-option" hidden><input type="radio" name="scope" value="tabGroup"> Chrome tab group <kbd>Alt+3</kbd></label>
+    </fieldset>
+
+    <label class="field" id="tabgroup-field" hidden>Chrome tab group
+      <select id="tabgroup-select"></select>
+    </label>
+
+    <div id="page-info" class="page-info">
+      <img id="page-icon" alt="" width="16" height="16">
+      <input type="text" id="title" aria-label="Title" placeholder="Title">
+    </div>
+    <p id="page-url" class="hint url"></p>
+    <p id="restricted-warning" class="hint warn" hidden>This kind of page may not reopen from an extension.</p>
+
+    <label class="field">Group
+      <select id="group-select" required></select>
+    </label>
+
+    <div id="new-group" class="new-group" hidden>
+      <label class="field">New group name
+        <input type="text" id="new-group-name" placeholder="e.g. When I am free">
+      </label>
+      <div class="field">Group colour
+        <div id="new-group-color"></div>
+      </div>
+    </div>
+
+    <label class="field"><span>Note <span class="hint">optional</span></span>
+      <textarea id="note" rows="2" placeholder="Why do I keep this?"></textarea>
+    </label>
+
+    <label class="field"><span>Labels <span class="hint">comma-separated</span></span>
+      <input type="text" id="labels" list="label-list" placeholder="reading, rust, deep-dive">
+      <datalist id="label-list"></datalist>
+    </label>
+
+    <div class="field">Colour
+      <div id="color"></div>
+    </div>
+
+    <label class="check"><input type="checkbox" id="close-after"> Close the tab(s) after saving</label>
+
+    <footer>
+      <p id="status" class="status" role="status"></p>
+      <button type="submit" class="primary" id="save-btn">Save <kbd>Enter</kbd></button>
+    </footer>
+    <p class="hint keys"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> saves from the note · <kbd>Esc</kbd> closes</p>
+  </form>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

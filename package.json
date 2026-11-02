@@ -1,0 +1,15 @@
+{
+  "name": "tab-shelf",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension: save open tabs into groups with notes, labels and colours, close them, and open them again later.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:smoke": "node test/smoke.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}
