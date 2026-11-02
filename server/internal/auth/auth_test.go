@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -35,6 +36,67 @@ func TestOldParameters(t *testing.T) {
 	}
 	if _, err := VerifyPassword("pw", "$argon2id$v=19$m=9999999,t=3,p=2$c2FsdA$a2V5"); err == nil {
 		t.Error("huge memory parameter accepted")
+	}
+}
+
+func TestNewPepper(t *testing.T) {
+	re := regexp.MustCompile(`^[a-zA-Z.\-]{64}$`)
+	seen := map[string]bool{}
+	for range 20 {
+		p, err := NewPepper()
+		if err != nil || !re.MatchString(p) {
+			t.Fatalf("pepper %q %v", p, err)
+		}
+		if seen[p] {
+			t.Fatal("same pepper twice")
+		}
+		seen[p] = true
+	}
+}
+
+func TestPepper(t *testing.T) {
+	t.Cleanup(func() { SetPepper("") })
+	if err := SetPepper("too-short"); err == nil {
+		t.Error("short pepper accepted")
+	}
+
+	// A hash made before the pepper was set.
+	SetPepper("")
+	plain, _ := HashPassword("a good password")
+
+	p1, _ := NewPepper()
+	if err := SetPepper(p1); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := HashPassword("a good password")
+	if !strings.Contains(h, ",keyid=") || NeedsRehash(h) {
+		t.Errorf("peppered hash %s", h)
+	}
+	if ok, err := VerifyPassword("a good password", h); !ok || err != nil {
+		t.Errorf("peppered verify: %v %v", ok, err)
+	}
+	if ok, _ := VerifyPassword("a bad password", h); ok {
+		t.Error("wrong password accepted")
+	}
+	// The old hash still works, and must be made again with the pepper.
+	if ok, err := VerifyPassword("a good password", plain); !ok || err != nil {
+		t.Errorf("plain hash with pepper set: %v %v", ok, err)
+	}
+	if !NeedsRehash(plain) {
+		t.Error("plain hash does not need a rehash")
+	}
+	// The same hash with another pepper is an error, not a wrong password.
+	p2, _ := NewPepper()
+	SetPepper(p2)
+	if _, err := VerifyPassword("a good password", h); err != ErrWrongPepper {
+		t.Errorf("other pepper: %v", err)
+	}
+	// Without the pepper, the peppered key is different: a stolen database
+	// alone does not let an attacker check guesses.
+	salt, _ := b64.DecodeString(strings.Split(h, "$")[4])
+	key, _ := idKey([]byte("a good password"), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	if strings.HasSuffix(h, b64.EncodeToString(key)) {
+		t.Error("hash does not depend on the pepper")
 	}
 }
 

@@ -12,6 +12,7 @@ WorkingDirectory=/var/lib/tab-stash
 # All settings are in this file. Example: deploy/tab-stash.env.example.
 EnvironmentFile=/etc/tab-stash/tab-stash.env
 ExecStart=/usr/local/bin/tab-stash-server serve
+UMask=0027
 Restart=on-failure
 RestartSec=5
 

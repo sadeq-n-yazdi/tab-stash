@@ -11,6 +11,7 @@
 //	tab-stash-server user delete <name>      delete a user and all of the user's data
 //	tab-stash-server user list               list users
 //	tab-stash-server user tokens <name>      list the active logins of a user
+//	tab-stash-server gen-salt                make a secret salt for the settings file
 //	tab-stash-server version                 show the version
 package main
 
@@ -49,6 +50,10 @@ const (
 func main() {
 	args, err := loadConfig(os.Args[1:])
 	if err == nil {
+		// The secret salt of the server (a "pepper"): see internal/auth.
+		err = auth.SetPepper(os.Getenv("TAB_STASH_PASSWORD_SALT"))
+	}
+	if err == nil {
 		err = run(args)
 	}
 	if err != nil {
@@ -67,6 +72,7 @@ func usage() {
   tab-stash-server user list              List the users
   tab-stash-server user tokens <name>     List the active logins of a user
   tab-stash-server backup <new-file>      Copy the database to a new file
+  tab-stash-server gen-salt               Make a value for TAB_STASH_PASSWORD_SALT
   tab-stash-server version                Show the version
 
 All commands accept "-config <file>", a settings file with KEY=VALUE lines.
@@ -136,6 +142,13 @@ func run(args []string) error {
 		return user(args[1:])
 	case "backup":
 		return backup(args[1:])
+	case "gen-salt":
+		salt, err := auth.NewPepper()
+		if err != nil {
+			return err
+		}
+		fmt.Println(salt)
+		return nil
 	case "version", "--version", "-v":
 		fmt.Println(version)
 		return nil
@@ -176,6 +189,9 @@ func serve(args []string) error {
 		return errors.New("use -tls-cert and -tls-key together")
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if !auth.HasPepper() {
+		logger.Warn("TAB_STASH_PASSWORD_SALT is not set; set it to the output of \"tab-stash-server gen-salt\"")
+	}
 	if *tlsCert == "" && !isLoopback(*addr) {
 		logger.Warn("the server listens on a public address without TLS; put an HTTPS reverse proxy in front of it", "addr", *addr)
 	}

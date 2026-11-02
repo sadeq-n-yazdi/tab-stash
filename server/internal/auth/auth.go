@@ -2,12 +2,14 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,22 +74,106 @@ func idKey(password, salt []byte, t, memory uint32, threads uint8, keyLen uint32
 // the current ones. The server then hashes the password again after a
 // correct login, so that all checks take the same time.
 func NeedsRehash(encoded string) bool {
-	return !strings.HasPrefix(encoded, fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$",
-		argon2.Version, argonMemory, argonTime, argonThreads))
+	return !strings.HasPrefix(encoded, "$argon2id$v="+strconv.Itoa(argon2.Version)+"$"+currentParams()+"$")
 }
 
-// HashPassword returns a PHC string: $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>.
+// ---------- pepper ----------
+//
+// Each hash has its own random salt (stored in the hash). The pepper is a
+// second, secret value for the whole server. It is kept in the settings
+// file, not in the database. Thus a copy of the database alone is not
+// sufficient to guess passwords. The password goes through
+// HMAC-SHA256(pepper, password) before Argon2id. The "keyid" parameter of
+// the hash identifies the pepper, so the server can tell a wrong pepper
+// from a wrong password.
+
+// PepperChars are the characters of a generated pepper: [a-zA-Z.-].
+const PepperChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-"
+
+// PepperLen is the length of a generated pepper.
+const PepperLen = 64
+
+// minPepperLen is the shortest pepper that SetPepper accepts.
+const minPepperLen = 32
+
+// ErrWrongPepper is returned when a hash was made with a different pepper.
+var ErrWrongPepper = errors.New("the password hash was made with a different pepper (TAB_STASH_PASSWORD_PEPPER)")
+
+var (
+	pepper   []byte
+	pepperID string
+)
+
+// SetPepper sets the server pepper. Call it once at start, before any
+// hash. An empty value means no pepper.
+func SetPepper(p string) error {
+	if p == "" {
+		pepper, pepperID = nil, ""
+		return nil
+	}
+	if len(p) < minPepperLen {
+		return fmt.Errorf("the pepper must have %d or more characters", minPepperLen)
+	}
+	pepper = []byte(p)
+	sum := sha256.Sum256(pepper)
+	pepperID = base64.RawURLEncoding.EncodeToString(sum[:6])
+	return nil
+}
+
+// HasPepper reports whether a pepper is set.
+func HasPepper() bool { return pepper != nil }
+
+// NewPepper returns PepperLen random characters from PepperChars.
+func NewPepper() (string, error) {
+	out := make([]byte, 0, PepperLen)
+	buf := make([]byte, 64)
+	// Rejection sampling: use only bytes below the largest multiple of
+	// len(PepperChars), so that each character has the same chance.
+	limit := byte(256 - 256%len(PepperChars))
+	for len(out) < PepperLen {
+		if _, err := rand.Read(buf); err != nil {
+			return "", err
+		}
+		for _, b := range buf {
+			if b < limit && len(out) < PepperLen {
+				out = append(out, PepperChars[int(b)%len(PepperChars)])
+			}
+		}
+	}
+	return string(out), nil
+}
+
+// peppered returns the input of Argon2 for a password.
+func peppered(password string, use bool) []byte {
+	if !use {
+		return []byte(password)
+	}
+	mac := hmac.New(sha256.New, pepper)
+	mac.Write([]byte(password))
+	return mac.Sum(nil)
+}
+
+func currentParams() string {
+	p := fmt.Sprintf("m=%d,t=%d,p=%d", argonMemory, argonTime, argonThreads)
+	if pepperID != "" {
+		p += ",keyid=" + pepperID
+	}
+	return p
+}
+
+// HashPassword returns a PHC string:
+// $argon2id$v=19$m=19456,t=2,p=1[,keyid=<pepper id>]$<salt>$<hash>.
 func HashPassword(password string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key, err := idKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	key, err := idKey(peppered(password, pepperID != ""), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argonMemory, argonTime, argonThreads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
+	return fmt.Sprintf("$argon2id$v=%d$%s$%s$%s",
+		argon2.Version, currentParams(), b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
 
 // VerifyPassword reports whether password matches the PHC hash.
@@ -102,8 +188,12 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	}
 	var memory, time uint32
 	var threads uint8
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &time, &threads); err != nil {
+	params, keyID, _ := strings.Cut(parts[3], ",keyid=")
+	if _, err := fmt.Sscanf(params, "m=%d,t=%d,p=%d", &memory, &time, &threads); err != nil {
 		return false, fmt.Errorf("bad argon2 parameters: %w", err)
+	}
+	if keyID != "" && keyID != pepperID {
+		return false, ErrWrongPepper
 	}
 	salt, err := b64.DecodeString(parts[4])
 	if err != nil {
@@ -116,7 +206,7 @@ func VerifyPassword(password, encoded string) (bool, error) {
 	if memory > 256*1024 || time > 10 || threads == 0 || len(want) == 0 {
 		return false, errors.New("argon2 parameters out of range")
 	}
-	got, err := idKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	got, err := idKey(peppered(password, keyID != ""), salt, time, memory, threads, uint32(len(want)))
 	if err != nil {
 		return false, err
 	}
