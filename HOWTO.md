@@ -46,14 +46,14 @@ Use one of the two procedures that follow.
 3. Clone the repository:
 
    ```sh
-   git clone https://github.com/sadeq-n-yazdi/my-tab-stash.git
+   git clone https://github.com/sadeq-n-yazdi/tab-stash.git
    ```
 
-The extension is in the `my-tab-stash/extension` folder.
+The extension is in the `tab-stash/extension` folder.
 
 ### 2.2 Without Git
 
-1. Go to <https://github.com/sadeq-n-yazdi/my-tab-stash>.
+1. Go to <https://github.com/sadeq-n-yazdi/tab-stash>.
 2. Click **Code**.
 3. Click **Download ZIP**.
 4. Extract the ZIP file into a folder where you want to keep the extension.
@@ -132,7 +132,7 @@ CAN CAUSE A LOSS OF DATA.
 
 1. Export your saved tabs. Do the steps "On the old computer" in section 5.
 2. Get the new files:
-   - If you used Git, open a terminal in the `my-tab-stash` folder and type:
+   - If you used Git, open a terminal in the `tab-stash` folder and type:
 
      ```sh
      git pull
@@ -214,7 +214,7 @@ and set the switch on the **Tab Stash** card to on.
 Do this procedure only if you want to change the code or run the tests.
 
 1. Install Node.js 20 or later from <https://nodejs.org>.
-2. Open a terminal in the `my-tab-stash` folder.
+2. Open a terminal in the `tab-stash` folder.
 3. Run the unit tests:
 
    ```sh

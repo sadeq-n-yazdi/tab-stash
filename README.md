@@ -43,7 +43,7 @@ Node.js to use the extension.
 1. Get the files:
 
    ```sh
-   git clone https://github.com/sadeq-n-yazdi/my-tab-stash.git
+   git clone https://github.com/sadeq-n-yazdi/tab-stash.git
    ```
 
    If you do not have Git, download the ZIP file from the repository page (**Code** > **Download ZIP**). Then extract it.
