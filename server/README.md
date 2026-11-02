@@ -282,9 +282,10 @@ All commands accept `-config <file>`.
   the status 503.
 - **CORS.** Browsers can call the API only from the origins in
   `TAB_STASH_ALLOW_ORIGIN`.
-- **Headers.** All responses have `Strict-Transport-Security`,
-  `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options` and
-  `Cache-Control: no-store`.
+- **Headers.** All responses have `X-Content-Type-Options`,
+  `Referrer-Policy`, `X-Frame-Options` and `Cache-Control: no-store`. If the
+  server uses its own TLS certificate, the responses also have
+  `Strict-Transport-Security`. Behind a proxy, set this header in the proxy.
 - **Logs.** The server does not write tokens, passwords or URLs to the logs.
 
 ## Development

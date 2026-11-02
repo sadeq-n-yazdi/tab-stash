@@ -109,8 +109,11 @@ func TestSyncFlow(t *testing.T) {
 	if recs, _ := out["records"].([]any); len(recs) != 2 {
 		t.Errorf("records: %v", out["records"])
 	}
-	if resp.Header.Get("Strict-Transport-Security") == "" || resp.Header.Get("Cache-Control") != "no-store" {
+	if resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("security headers missing: %v", resp.Header)
+	}
+	if resp.Header.Get("Strict-Transport-Security") != "" {
+		t.Errorf("HSTS on plain HTTP; the proxy sets it: %v", resp.Header)
 	}
 
 	if resp, _ := do(t, srv, "GET", "/api/v1/sync?since=abc", token, ""); resp.StatusCode != 400 {
@@ -122,6 +125,24 @@ func TestSyncFlow(t *testing.T) {
 	}
 	if resp, _ := do(t, srv, "GET", "/api/v1/sync", token, ""); resp.StatusCode != 401 {
 		t.Errorf("old token after logout: %d", resp.StatusCode)
+	}
+}
+
+func TestHSTSOnlyWithTLS(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "tls.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	srv := httptest.NewTLSServer(New(st, Config{}))
+	t.Cleanup(srv.Close)
+	resp, err := srv.Client().Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := resp.Header.Get("Strict-Transport-Security"); got != hstsHeaderValue {
+		t.Errorf("HSTS with TLS = %q", got)
 	}
 }
 

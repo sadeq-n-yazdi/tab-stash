@@ -251,7 +251,8 @@ on each change. The store needs no other change for sync.
 
 ## 7. Security
 
-- Use HTTPS only. Set `Strict-Transport-Security` on all responses.
+- Use HTTPS only. Set `Strict-Transport-Security` on all responses. Behind a
+  proxy, the proxy sets it. The server sets it only when it uses its own TLS.
 - Keep passwords only as Argon2id hashes. Each hash has its own random salt.
 - Use a secret salt for the whole server (`TAB_STASH_PASSWORD_SALT`) in the
   settings file, not in the database. Send the password through HMAC-SHA256

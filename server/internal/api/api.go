@@ -484,7 +484,11 @@ func (s *Server) cors(next http.Handler) http.Handler {
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Strict-Transport-Security", hstsHeaderValue)
+		// Behind a proxy, the proxy sets HSTS. Two different headers are
+		// not clean, and browsers use only the first one.
+		if r.TLS != nil {
+			h.Set("Strict-Transport-Security", hstsHeaderValue)
+		}
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
