@@ -129,6 +129,10 @@ try {
   await popup.goto(extUrl('popup/popup.html'));
   await popup.locator('#group-select option', { hasText: 'Leisure reading' }).waitFor({ state: 'attached' });
   assert.ok((await popup.locator('#group-select option').count()) >= 3);
+  // Here the popup runs in its own tab, so "This tab" is the popup page itself.
+  // Select "All tabs in window" for a screenshot without that page's details.
+  await popup.locator('input[name="scope"][value="window"]').check();
+  assert.ok(await popup.locator('#page-info').isHidden());
   if (shots) await popup.screenshot({ path: join(shots, 'popup.png') });
   console.log('✔ popup renders with groups');
 
