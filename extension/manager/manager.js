@@ -212,7 +212,7 @@ function bookmarkItem(b) {
         h('span', { class: 'url' }, hostOf(b.url)),
         !state.filter.groupId && group ? h('span', {}, colorDot(group.color), ' ', group.name) : null,
         h('span', {}, formatDate(b.createdAt)),
-        isRestrictedUrl(b.url) ? h('span', { class: 'warn' }, 'may not reopen') : null),
+        isRestrictedUrl(b.url) ? h('span', { class: 'warn' }, 'can fail to open') : null),
       b.note ? h('p', { class: 'note' }, b.note) : null,
       b.labels.length ? h('div', { class: 'chips' }, labelChips(b.labels, { onClick: toggleLabel, active: state.filter.labels })) : null),
     h('div', { class: 'row-actions' },
