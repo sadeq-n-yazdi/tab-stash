@@ -50,10 +50,6 @@ const (
 func main() {
 	args, err := loadConfig(os.Args[1:])
 	if err == nil {
-		// The secret salt of the server (a "pepper"): see internal/auth.
-		err = auth.SetPepper(os.Getenv("TAB_STASH_PASSWORD_SALT"))
-	}
-	if err == nil {
 		err = run(args)
 	}
 	if err != nil {
@@ -82,8 +78,10 @@ Run "tab-stash-server serve -h" or "tab-stash-server user -h" for the flags.
 
 // loadConfig removes "-config <file>" (or "-config=<file>") from args and
 // reads the file. Without the flag, it reads $TAB_STASH_CONFIG if it is set.
-// Each "KEY=VALUE" line sets the environment variable KEY, if it is not
-// already set. Empty lines and lines that start with "#" are ignored.
+// Each "KEY=VALUE" line sets the environment variable KEY, if KEY was not
+// set before the file was read. If a key is in the file more than one time,
+// the last line wins (the same as systemd EnvironmentFile). Empty lines and
+// lines that start with "#" are ignored.
 func loadConfig(args []string) ([]string, error) {
 	path := os.Getenv("TAB_STASH_CONFIG")
 	var rest []string
@@ -109,7 +107,18 @@ func loadConfig(args []string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read the settings file: %w", err)
 	}
-	for n, line := range strings.Split(string(data), "\n") {
+	return rest, applySettings(path, string(data))
+}
+
+// applySettings sets the environment variables of a settings file.
+func applySettings(path, data string) error {
+	fromEnv := map[string]bool{}
+	for _, kv := range os.Environ() {
+		if k, _, ok := strings.Cut(kv, "="); ok {
+			fromEnv[k] = true
+		}
+	}
+	for n, line := range strings.Split(data, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -117,17 +126,17 @@ func loadConfig(args []string) ([]string, error) {
 		key, value, ok := strings.Cut(line, "=")
 		key = strings.TrimSpace(key)
 		if !ok || !strings.HasPrefix(key, "TAB_STASH_") {
-			return nil, fmt.Errorf("%s line %d: use KEY=VALUE with a TAB_STASH_ name", path, n+1)
+			return fmt.Errorf("%s line %d: use KEY=VALUE with a TAB_STASH_ name", path, n+1)
 		}
 		value = strings.TrimSpace(value)
 		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
 			value = value[1 : len(value)-1]
 		}
-		if _, set := os.LookupEnv(key); !set {
+		if !fromEnv[key] {
 			os.Setenv(key, value)
 		}
 	}
-	return rest, nil
+	return nil
 }
 
 func run(args []string) error {
@@ -136,12 +145,19 @@ func run(args []string) error {
 		return errors.New("no command")
 	}
 	switch args[0] {
-	case "serve":
-		return serve(args[1:])
-	case "user":
-		return user(args[1:])
-	case "backup":
-		return backup(args[1:])
+	case "serve", "user", "backup":
+		// The secret salt of the server (a "pepper"): see internal/auth.
+		if err := auth.SetPepper(os.Getenv("TAB_STASH_PASSWORD_SALT")); err != nil {
+			return err
+		}
+		switch args[0] {
+		case "serve":
+			return serve(args[1:])
+		case "user":
+			return user(args[1:])
+		default:
+			return backup(args[1:])
+		}
 	case "gen-salt":
 		salt, err := auth.NewPepper()
 		if err != nil {

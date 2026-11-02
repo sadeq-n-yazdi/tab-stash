@@ -5,6 +5,9 @@ tells you how to move your saved tabs, update the extension, and remove it.
 
 For the use of the extension, read [README.md](README.md).
 
+To install the sync server on your own web server, read
+[server/README.md](server/README.md). The extension works without the server.
+
 ## Contents
 
 1. [Requirements](#1-requirements)
